@@ -88,6 +88,93 @@ class MatcherTests(unittest.TestCase):
         self.assertEqual(len(result["requirements"]), 1)
         self.assertFalse(result["important_gaps"])
 
+    def test_powerbi_tableau_or_accepts_either_tool(self):
+        for vacancy in ("Power BI or Tableau", "Tableau or PowerBI", "Power BI / Tableau"):
+            for cv in ("Power BI", "Tableau"):
+                with self.subTest(cv=cv, vacancy=vacancy):
+                    result = analyse_match(cv, vacancy)
+                    self.assertEqual(result["score"], 100)
+                    self.assertEqual(len(result["requirements"]), 1)
+                    self.assertFalse(result["important_gaps"])
+        result = analyse_match("Excel", "Power BI or Tableau")
+        self.assertEqual(len(result["important_gaps"]), 1)
+        self.assertEqual(result["score"], 0)
+
+    def test_or_deduplicates_constituents_and_reverse_order(self):
+        baseline = "Power BI or Tableau. Excel."
+        duplicates = "PowerBI. Tableau or Power BI. Excel. Power BI or Tableau. PowerBI."
+        for cv in ("Excel", "Tableau", "Power BI", "Power BI. Excel."):
+            with self.subTest(cv=cv):
+                first, second = analyse_match(cv, baseline), analyse_match(cv, duplicates)
+                self.assertEqual(first["score"], second["score"])
+                self.assertEqual(len(second["requirements"]), 2)
+                self.assertEqual(len(first["important_gaps"]), len(second["important_gaps"]))
+
+    def test_or_inside_longer_and_list(self):
+        result = analyse_match("Excel. Tableau.", "Excel and Power BI or Tableau")
+        self.assertEqual(result["score"], 100)
+        self.assertEqual(len(result["requirements"]), 2)
+        self.assertEqual(analyse_match("Tableau", "Power BI and Tableau")["score"], 50)
+
+    def test_dubai_uae_dedup_preserves_city_and_visa(self):
+        baseline = "Based in Dubai. Own visa required."
+        variants = ("Dubai. UAE. United Arab Emirates. Own visa required.",
+                    "United Arab Emirates. Dubai. UAE. Own visa required.")
+        for vacancy in variants:
+            result = analyse_match("Based in Dubai", vacancy)
+            self.assertEqual(len(result["requirements"]), 2)
+            self.assertEqual(result["score"], analyse_match("Based in Dubai", baseline)["score"])
+            self.assertEqual(keys(result, "important_gaps"), {"own_visa"})
+            self.assertEqual(len(analyse_match("", vacancy)["important_gaps"]), 2)
+        # A country mention in a CV does not prove current Dubai residency.
+        self.assertIn("dubai", keys(analyse_match("Based in UAE", "Dubai. UAE."), "important_gaps"))
+
+    def test_location_duplication_does_not_change_overall(self):
+        for cv in ("SQL", "Based in Dubai", "SQL. Based in Dubai"):
+            self.assertEqual(analyse_match(cv, "SQL. Dubai.")["score"],
+                             analyse_match(cv, "SQL. Dubai. UAE. United Arab Emirates.")["score"])
+
+    def test_soft_skills_capped_in_sparse_vacancies(self):
+        soft = "Problem solving. Attention to detail. Communication."
+        for core in ("SQL", "Excel", "SQL. Power BI", "SQL preferred"):
+            result = analyse_match(core, core + ". " + soft)
+            self.assertGreaterEqual(result["score"], 95)
+            self.assertLessEqual(result["effective_weights"]["soft_skills"], 5)
+        vacancy = "SQL. Power BI. " + soft
+        missing_soft = analyse_match("SQL. Power BI", vacancy)["score"]
+        missing_sql = analyse_match("Power BI. " + soft, vacancy)["score"]
+        missing_tool = analyse_match("SQL. " + soft, vacancy)["score"]
+        self.assertGreater(missing_soft, missing_sql)
+        self.assertGreater(missing_soft, missing_tool)
+        self.assertIsNone(analyse_match(soft, soft)["score"])
+
+    def test_separate_language_location_breakdown(self):
+        result = analyse_match("SQL. English", "SQL. English. Dubai. UAE.")
+        self.assertEqual(result["breakdown"]["hard_skills"], 100)
+        self.assertEqual(result["breakdown"]["languages"], 100)
+        self.assertEqual(result["breakdown"]["location"], 0)
+        self.assertIsNone(result["breakdown"]["tools"])
+        report = format_analysis(result)
+        for line in ("Hard skills: 100%", "Tools: N/A", "Experience: N/A",
+                     "Languages: 100%", "Location: 0%", "Soft skills: N/A"):
+            self.assertIn(line, report)
+
+    def test_gaps_are_grouped_without_repeated_reasons(self):
+        result = analyse_match("", "SQL. Python. Java. JavaScript. ETL. Power BI or Tableau. Power BI. Dubai. UAE.")
+        report = format_analysis(result)
+        gap_block = report.split("⚠️ Important gaps\n")[1].split("▫️ Optional gaps")[0]
+        self.assertEqual(gap_block.count("• Hard skills:"), 1)
+        self.assertEqual(gap_block.count("• Software / tools:"), 1)
+        self.assertEqual(gap_block.count("Power BI"), 1)
+        self.assertEqual(gap_block.count("• Location / visa:"), 1)
+        self.assertIn("+1 more", gap_block)
+        self.assertNotIn("Not confirmed in CV", gap_block)
+
+    def test_overlapping_or_groups_do_not_become_one_big_or(self):
+        result = analyse_match("Power BI", "Power BI or Tableau. Tableau or Excel.")
+        self.assertEqual(len(result["requirements"]), 2)
+        self.assertEqual(result["score"], 50)
+
     def test_negated_and_learning_claims_are_not_evidence(self):
         for cv in ("No Python experience", "Learning Python", "Python not used", "Without Python"):
             self.assertFalse(keys(analyse_match(cv, "Python required")))

@@ -1,6 +1,8 @@
 # Dubai Job Assistant — TODO
 
 ## Current priority — offline heuristic analysis (2026-09-10)
+- [x] Real-vacancy fixes: OR/constituent deduplication, Dubai/UAE consolidation,
+  5% maximum soft-skills contribution, grouped reports and separate category breakdown.
 - [x] Replace frequency keyword matching with classified requirements.
 - [x] Seven categories, synonym normalization and standalone stopword exclusion.
 - [x] Weighted scoring, mandatory/optional distinction and simple alternatives.
@@ -172,3 +174,34 @@ Before doing new work:
 5. Commit for this checkpoint: `Improve offline vacancy analysis with weighted requirements`.
    Find its hash with `git log -1 --oneline`. Use the scoped safe.directory option from
    the previous checkpoint when running Git under the sandbox account.
+
+## Latest checkpoint — matcher deduplication and score calibration
+
+- Completed in `services/matcher.py`: canonical OR chains (including reverse order,
+  slash alternatives and OR inside AND lists), constituent deduplication before
+  scoring, and one Dubai/UAE geographic requirement retaining the city specificity.
+  Visa, authorization and experience constraints are not folded into geography.
+- Explicit OR conditions remain sufficient despite repeated bare constituent mentions;
+  distinct scopes/levels are preserved. Partially overlapping OR groups are not
+  combined into a single broad alternative.
+- Soft skills now contribute at most 5% after normalization, including sparse
+  vacancies; missing all soft skills cannot drop an otherwise complete score below
+  95. Soft-only vacancies receive overall N/A. Other weight ratios remain unchanged.
+- Added separate `breakdown` for all seven categories, with None/N/A when absent.
+  Existing `category_scores`, detailed requirements, matched/missing and suggestions
+  remain available. `effective_weights` exposes the normalized weights for testing.
+- Report groups related gaps/matches by category, shows four labels plus a remainder
+  count, and gives one recommendation per category. Full details remain in returned
+  analyzer data. Existing Telegram splitting and other bot features are unchanged.
+- Updated README and regression tests: 49 tests pass, including nine dedicated
+  OR/dedup/location/soft-weight/breakdown/grouping tests. Updated the bot report test
+  to verify compact output and Telegram size safety instead of requiring verbosity.
+- No OpenAI requests, paid services, dependencies, database or configuration changes.
+- Verification: all 49 tests, final compileall, pip check and diff check passed.
+  Startup is covered by offline Application construction and handler
+  tests; no live polling or external messages were started.
+- Next action: manually recheck the real vacancy in Telegram with sample CV data.
+  If another extraction issue appears, add a synthetic case in `tests/test_matcher.py`
+  and update `extract_requirements`, `deduplicate_requirements` or `evidence_status`.
+  Keep external AI disabled. No partially implemented work remains.
+- Commit title: `Deduplicate vacancy requirements and cap soft skill impact`.

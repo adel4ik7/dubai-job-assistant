@@ -162,13 +162,27 @@ The group weights are hard skills **35%**, tools **20%**, experience **20%**, ed
 group mandatory or unspecified requirements weigh 1, optional requirements weigh
 0.25. The group score is matched weight / total requirement weight. Empty groups are
 excluded and remaining group weights are normalized. A wholly optional group also
-receives only a quarter of its usual group weight. For example, with only Python
+receives only a quarter of its usual group weight. After normalization, the entire
+soft-skills category is capped at **5% of the overall score**, even when few other
+categories are present. A vacancy containing only soft skills receives an overall
+**N/A** rather than a misleading full match score. For example, with only Python
 and Excel required, an Excel-only CV scores 20 / (35 + 20), or 36%.
 
 Preferred/optional headings and local phrases such as 'an advantage' are recognized.
 Mandatory occurrences override optional duplicates; a higher preferred experience
 threshold stays optional. Simple two-item alternatives such as 'Python or SQL' count
-as one requirement. Years must be explicitly stated in the CV and relevant to the
+as one requirement. OR chains are recognized inside longer AND lists too. Reversed
+OR clauses and repeated constituent mentions (Power BI or Tableau; Power BI) are
+deduplicated before scoring. The explicit alternative remains sufficient; the bare
+repetition is not treated as a new mandatory condition. Distinct proficiency or
+experience thresholds remain separate. Partially overlapping OR groups are not
+merged into an overly broad OR.
+
+Dubai plus UAE/United Arab Emirates is one location constraint retaining Dubai's
+city specificity. A country-only CV statement does not prove Dubai residency. Visa,
+work authorization and local experience remain independent requirements.
+
+Years must be explicitly stated in the CV and relevant to the
 required specialization; dates are not summed and unrelated experience is not added.
 Known degree subjects are checked. Negated skills and qualifications in progress do
 not count as established evidence. Requested advanced/fluent proficiency needs an
@@ -180,7 +194,14 @@ Reports show overall score, strong matches, important gaps, optional gaps and
 concrete recommendations. Every gap means **insufficient CV evidence**, not proof of
 a missing capability. Recommendations only highlight existing evidence or suggest
 verification/development; they never tell users to add unsupported qualifications.
-Long reports are split into Telegram-safe messages without dropping requirements.
+Related matches and gaps are grouped by category, showing up to four labels per
+group and a count of additional items. Repeated gap explanations and recommendations
+are consolidated. Full recognized requirements remain in the analyzer's returned
+data. The report includes a separate evidence breakdown for hard skills, tools,
+experience, education, languages, location and soft skills. Absent categories show
+N/A, not 0%. Language/location still share the 10% overall budget. Category percentages
+describe evidence coverage, not their contribution to the overall score.
+Any longer report is still split into Telegram-safe messages.
 
 This measures recognized CV evidence, not hiring probability or an official ATS
 score. A small dictionary cannot cover every occupation, degree, language level,

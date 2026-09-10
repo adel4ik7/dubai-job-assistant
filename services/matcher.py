@@ -203,19 +203,33 @@ def extract_requirements(text: str, *, cv: bool = False) -> list[Requirement]:
             scope = "uae_experience" if "uae" in clause else "dubai_experience"
             items.append(Requirement(scope, scope.replace("_", " ").upper(), "experience", optional, scope=scope))
 
-        # Simple alternatives are one requirement, not two mandatory gaps.
-        # Complex alternatives involving years remain conservative separate conditions.
+        # Build adjacent OR chains, even inside a longer list (Excel and Power BI
+        # or Tableau). Canonical order makes reversed/repeated OR clauses identical.
+        # Complex alternatives involving years remain conservative conditions.
         if not year_match:
             for category in CATALOG:
-                choices = [i for i in items if i.category == category]
-                if len(choices) == 2:
-                    first, second = sorted(choices, key=lambda i: PATTERNS[i.key].search(clause).start())
-                    between = clause[PATTERNS[first.key].search(clause).end():PATTERNS[second.key].search(clause).start()]
+                choices = sorted((i for i in items if i.category == category),
+                                 key=lambda i: PATTERNS[i.key].search(clause).start())
+                chains = []
+                for choice in choices:
+                    if not chains:
+                        chains.append([choice])
+                        continue
+                    first = chains[-1][-1]
+                    between = clause[PATTERNS[first.key].search(clause).end():PATTERNS[choice.key].search(clause).start()]
                     if re.fullmatch(r"\s+(?:or)\s+|\s*/\s*", between):
-                        items = [i for i in items if i not in choices]
-                        items.append(replace(first, key=first.key + "|" + second.key,
-                                             label=first.label + " or " + second.label,
-                                             alternatives=(first.key, second.key)))
+                        chains[-1].append(choice)
+                    else:
+                        chains.append([choice])
+                for chain in chains:
+                    if len(chain) < 2:
+                        continue
+                    chain.sort(key=lambda i: i.key)
+                    items = [i for i in items if i not in chain]
+                    alternatives = tuple(i.key for i in chain)
+                    items.append(replace(chain[0], key="|".join(alternatives),
+                                         label=" or ".join(i.label for i in chain),
+                                         alternatives=alternatives))
         for item in items:
             previous = found.get(item.key)
             if previous:
@@ -230,7 +244,42 @@ def extract_requirements(text: str, *, cv: bool = False) -> list[Requirement]:
                 item = replace(selected, optional=previous.optional and item.optional,
                                advanced=previous.advanced or item.advanced)
             found[item.key] = item
-    return list(found.values())
+    requirements = list(found.values())
+    return requirements if cv else deduplicate_requirements(requirements)
+
+
+def deduplicate_requirements(requirements: list[Requirement]) -> list[Requirement]:
+    """Repeated constituent mentions don't create an extra penalty beside an OR.
+
+    Keep different levels/scopes separate. Do not merge partially overlapping OR
+    groups: (A or B) and (B or C) is not equivalent to (A or B or C).
+    """
+    removed = set()
+    result = list(requirements)
+    for index, group in enumerate(result):
+        if not group.alternatives:
+            continue
+        for other_index, item in enumerate(result):
+            if other_index == index or other_index in removed:
+                continue
+            if (not item.alternatives and item.key in group.alternatives and
+                    item.category == group.category and item.scope == group.scope and
+                    item.advanced == group.advanced and item.years == group.years):
+                group = replace(group, optional=group.optional and item.optional)
+                removed.add(other_index)
+        result[index] = group
+
+    # A city plus its country is one geographic constraint, retaining the city.
+    # Visa, work authorization and local experience remain separate requirements.
+    cities = [i for i, r in enumerate(result) if r.key in {"dubai", "abu_dhabi"}]
+    countries = [i for i, r in enumerate(result) if r.key == "uae"]
+    if len(cities) == 1 and countries:
+        city_index = cities[0]
+        city = result[city_index]
+        result[city_index] = replace(city, label=city.label.replace(" location", " / UAE location"),
+                                     optional=city.optional and all(result[i].optional for i in countries))
+        removed.update(countries)
+    return [item for i, item in enumerate(result) if i not in removed]
 
 
 def evidence_status(requirement: Requirement, evidence: list[Requirement]) -> tuple[bool, str]:
@@ -271,7 +320,7 @@ def analyse_match(resume_text: str, vacancy_text: str) -> dict:
                      "category": requirement.category, "optional": requirement.optional,
                      "matched": matched, "reason": reason})
     category_scores = {}
-    total, active_weight = 0.0, 0.0
+    group_fractions, effective_weights = {}, {}
     for group, weight in WEIGHTS.items():
         members = [r for r in rows if (r["category"] in {"languages", "location"}
                    if group == "languages_location" else r["category"] == group)]
@@ -282,15 +331,34 @@ def analyse_match(resume_text: str, vacancy_text: str) -> dict:
         # A purely optional category must not outweigh a mandatory category.
         effective_weight = weight * (0.25 if all(r["optional"] for r in members) else 1)
         category_scores[group] = round(100 * numerator / denominator)
-        total += effective_weight * numerator / denominator
-        active_weight += effective_weight
+        group_fractions[group] = numerator / denominator
+        effective_weights[group] = effective_weight
+    # Renormalizing sparse vacancies must not turn the nominal 5% soft-skill
+    # budget into a 20-50% penalty. Cap the entire group at 5% after normalization.
+    core_weight = sum(weight for group, weight in effective_weights.items() if group != "soft_skills")
+    if "soft_skills" in effective_weights:
+        effective_weights["soft_skills"] = min(effective_weights["soft_skills"], core_weight * 5 / 95)
+    active_weight = sum(effective_weights.values())
+    total = sum(effective_weights[group] * fraction for group, fraction in group_fractions.items())
+    breakdown = {}
+    for category in CATEGORY_LABELS:
+        members = [r for r in rows if r["category"] == category]
+        denominator = sum(0.25 if r["optional"] else 1 for r in members)
+        numerator = sum(0.25 if r["optional"] else 1 for r in members if r["matched"])
+        breakdown[category] = round(100 * numerator / denominator) if denominator else None
     strong = [r for r in rows if r["matched"]]
     important = [r for r in rows if not r["matched"] and not r["optional"]]
     optional = [r for r in rows if not r["matched"] and r["optional"]]
     recommendations = []
     if strong:
         recommendations.append("Highlight existing CV evidence for " + ", ".join(r["label"] for r in strong[:3]) + "; keep the original facts and proficiency level.")
-    for row in important[:3]:
+    # One recommendation per category avoids repeating the same advice for every skill.
+    grouped_important = []
+    for category in CATEGORY_LABELS:
+        members = [r for r in important if r["category"] == category]
+        if members:
+            grouped_important.append({"category": category, "label": compact_labels(members, 3)})
+    for row in grouped_important[:3]:
         if row["category"] == "experience":
             advice = "Compare the requested duration with your actual dated roles; do not round up or count unrelated work."
         elif row["category"] == "education":
@@ -305,30 +373,45 @@ def analyse_match(resume_text: str, vacancy_text: str) -> dict:
     if optional:
         recommendations.append("Lower priority: " + ", ".join(r["label"] for r in optional[:3]) + ". Treat these as optional development goals, not existing qualifications.")
     return {"score": round(total / active_weight * 100) if active_weight else None,
-            "requirements": rows, "category_scores": category_scores,
+            "requirements": rows, "category_scores": category_scores, "breakdown": breakdown,
+            "effective_weights": {k: round(100 * v / active_weight, 4) if active_weight else 0
+                                  for k, v in effective_weights.items()},
             "strong_matches": strong, "important_gaps": important, "optional_gaps": optional,
             "matched": [r["label"] for r in strong], "missing": [r["label"] for r in important + optional],
             "suggestions": recommendations,
             "coverage_note": "Based only on recognized requirements in a small English-language dictionary. Unrecognized requirements need manual review."}
 
 
+def compact_labels(rows: list[dict], limit: int = 4) -> str:
+    labels = list(dict.fromkeys(row["label"] for row in rows))
+    text = "; ".join(labels[:limit])
+    if len(labels) > limit:
+        text += f"; +{len(labels) - limit} more"
+    return text
+
+
 def format_analysis(result: dict) -> str:
-    score = f"{result['score']}%" if result["score"] is not None else "N/A — no recognized requirements"
+    score = f"{result['score']}%" if result["score"] is not None else "N/A — insufficient non-soft requirements"
     lines = [f"📊 Overall match score: {score}", ""]
+    lines.append("Breakdown (recognized CV evidence)")
+    for category, label in CATEGORY_LABELS.items():
+        value = result["breakdown"][category]
+        label = {"tools": "Tools", "location": "Location", "education": "Education"}.get(category, label)
+        lines.append(f"{label}: {str(value) + '%' if value is not None else 'N/A'}")
+    lines.append("")
     for title, key in (("✅ Strong matches", "strong_matches"), ("⚠️ Important gaps", "important_gaps"), ("▫️ Optional gaps", "optional_gaps")):
         rows = result[key]
         lines.append(title)
-        for row in rows:
-            line = f"• {row['label']} [{CATEGORY_LABELS[row['category']]}]"
-            if not row["matched"]:
-                line += " — " + row["reason"]
-            lines.append(line)
+        for category, label in CATEGORY_LABELS.items():
+            members = [r for r in rows if r["category"] == category]
+            if members:
+                lines.append(f"• {label}: {compact_labels(members)}")
         if not rows:
             lines.append("• None identified")
         lines.append("")
     lines.append("🛠 Recommendations")
     lines.extend("• " + s for s in result["suggestions"])
-    lines.extend(["", "Gaps mean insufficient CV evidence. Never add skills, experience or credentials you do not have.",
-                  result["coverage_note"], "Weights: hard skills 35%, tools 20%, experience 20%, education 10%, languages/location 10%, soft skills 5%. Absent groups are excluded. Optional items and wholly optional groups use quarter weight.",
+    lines.extend(["", "Gaps mean insufficient CV evidence, including duration or proficiency. N/A means no requirements to assess. Never add skills, experience or credentials you do not have.",
+                  result["coverage_note"], "Related items are grouped; +N indicates additional items. Weights: hard skills 35, tools 20, experience 20, education 10, languages/location 10. Absent groups are excluded; optional requirements have quarter weight. Soft skills contribute at most 5% overall.",
                   "This is a heuristic score, not an official ATS score and not an ATS guarantee."])
     return "\n".join(lines)

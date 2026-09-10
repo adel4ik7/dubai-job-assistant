@@ -76,7 +76,7 @@ class BotTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("heuristic score", self.message.reply_text.call_args.args[0])
         self.assertIn("not an ATS guarantee", format_analysis(analyse_match(text, self.message.text)))
 
-    async def test_long_local_report_is_split_without_ai(self):
+    async def test_local_report_is_compact_and_telegram_safe_without_ai(self):
         bot.db.add_resume(1, "sample.txt", "unused", "Warehouse worker handling deliveries. " * 5)
         self.message.text = (
             "Python. SQL. Data analysis. Accounting. Project management. Customer service. "
@@ -90,7 +90,8 @@ class BotTests(unittest.IsolatedAsyncioTestCase):
             await bot.vacancy_received(self.update, self.context)
             network.assert_not_awaited()
         sent = [call.args[0] for call in self.message.reply_text.call_args_list]
-        self.assertGreater(len(sent), 1)
+        self.assertTrue(sent)
+        self.assertLessEqual(len(sent), 2)
         self.assertTrue(all(len(text.encode("utf-16-le")) // 2 <= 3500 for text in sent))
         self.assertIn("not an official ATS score", "".join(sent))
         self.assertEqual(self.message.reply_text.call_args.kwargs["reply_markup"], bot.MAIN_MENU)
