@@ -231,7 +231,9 @@ async def vacancy_received(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return ConversationHandler.END
 
     result = analyse_match(resume["extracted_text"], vacancy)
-    await update.message.reply_text(format_analysis(result), reply_markup=MAIN_MENU)
+    chunks = message_chunks(format_analysis(result))
+    for index, chunk in enumerate(chunks):
+        await update.message.reply_text(chunk, reply_markup=MAIN_MENU if index == len(chunks) - 1 else None)
     return ConversationHandler.END
 
 

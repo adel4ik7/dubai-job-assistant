@@ -76,6 +76,25 @@ class BotTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("heuristic score", self.message.reply_text.call_args.args[0])
         self.assertIn("not an ATS guarantee", format_analysis(analyse_match(text, self.message.text)))
 
+    async def test_long_local_report_is_split_without_ai(self):
+        bot.db.add_resume(1, "sample.txt", "unused", "Warehouse worker handling deliveries. " * 5)
+        self.message.text = (
+            "Python. SQL. Data analysis. Accounting. Project management. Customer service. "
+            "Sales. Power BI. Excel. Tableau. SAP. Salesforce. AutoCAD. Git. AWS. Azure. "
+            "3 years Python experience. Bachelor's degree in Computer Science. PMP. ACCA. "
+            "Fluent English. Arabic. Hindi. Russian. Based in Dubai. Own visa required. "
+            "Communication. Teamwork. Leadership.\nOptional:\nJava. SEO. Machine learning. "
+            "Statistics. ETL. Logistics. Jira. QuickBooks."
+        )
+        with patch("services.ai.OpenAIProvider.generate", new_callable=AsyncMock) as network:
+            await bot.vacancy_received(self.update, self.context)
+            network.assert_not_awaited()
+        sent = [call.args[0] for call in self.message.reply_text.call_args_list]
+        self.assertGreater(len(sent), 1)
+        self.assertTrue(all(len(text.encode("utf-16-le")) // 2 <= 3500 for text in sent))
+        self.assertIn("not an official ATS score", "".join(sent))
+        self.assertEqual(self.message.reply_text.call_args.kwargs["reply_markup"], bot.MAIN_MENU)
+
     async def test_menu_resets_real_conversation_routing(self):
         conversation = next(h for h in self.app.handlers[0] if isinstance(h, ConversationHandler))
         self.app.bot._bot_user = User(123, "Test bot", True, username="test_bot")

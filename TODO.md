@@ -1,5 +1,18 @@
 # Dubai Job Assistant — TODO
 
+## Current priority — offline heuristic analysis (2026-09-10)
+- [x] Replace frequency keyword matching with classified requirements.
+- [x] Seven categories, synonym normalization and standalone stopword exclusion.
+- [x] Weighted scoring, mandatory/optional distinction and simple alternatives.
+- [x] Explicit experience/proficiency/degree/location checks and truthful recommendations.
+- [x] Full Telegram report with safe splitting; existing features retained.
+- [x] Automated regressions and dependency/startup sanity checks.
+- [ ] Owner's manual Telegram acceptance of local analysis with a sample CV.
+
+Latest instruction overrides the older AI acceptance plan below: do NOT call OpenAI
+or introduce paid services. Existing AI code/menu fallback remains intact; AI tests
+use mocks only. Earlier checkpoint is historical, not authorization to resume API use.
+
 ## Milestone 0 — foundation
 - [x] Telegram bot skeleton
 - [x] Local SQLite database
@@ -112,3 +125,50 @@ Before doing new work:
   Sandbox Git commands require the per-command option
   `-c safe.directory=C:/Users/Адель/Desktop/dubai_job_assistant` due to the sandbox
   account differing from the folder owner. No global Git configuration was changed.
+
+## Checkpoint — offline heuristic analyzer, 2026-09-10
+
+### Complete
+- Replaced `services/matcher.py` frequency ranking with a small explicit English
+  requirement vocabulary, aliases, contextual rules and evidence-based matching.
+- Categories: hard skills; tools; experience; education/certifications; languages;
+  Dubai/UAE/location/visa; soft skills. Stopwords alone never create requirements.
+- Weights 35/20/20/10/10/5, with languages/location sharing the 10% group. Empty groups
+  excluded. Optional items use quarter weight within groups; wholly optional groups
+  also receive quarter group weight. Repetitions cannot raise importance.
+- Report includes full strong/important/optional lists, explanations for gaps,
+  actionable truthful recommendations, coverage limits and non-official ATS disclaimer.
+- Years remain scoped and explicit; no invented totals from employment dates. Basic
+  skill/language mentions do not establish requested advanced proficiency. Degree
+  subjects, negations, in-progress credentials, optional higher experience thresholds,
+  simple alternatives and location/visa distinctions have regression coverage.
+- `bot.py:vacancy_received` splits full reports using the existing UTF-16-safe helper.
+  Upload/parser, tracker/status and AI fallback code remain available. No dependencies
+  added, no schema migration, no secrets read/changed, no API calls or paid services used.
+- `README.md` documents scoring math and realistic limitations.
+
+### Verification
+- `.\.venv\Scripts\python.exe -m unittest discover -s tests -q`: 40 tests passed
+  (26 new tests plus the original 14). AI transport/provider calls are mocked.
+- `.\.venv\Scripts\python.exe -m pip check`: no broken requirements.
+- `.\.venv\Scripts\python.exe -m compileall .`: passed after the final code changes.
+- Offline startup constructs the real Telegram Application with synthetic credentials
+  and no OpenAI key. Handler regression checks cover local analysis, long reports,
+  tracker/status, cancellation and disabled AI menu. No live polling started.
+- The existing PTB informational warning about mixed callback/text conversations
+  (`per_message=False`) remains expected; actual command reset routing is tested.
+
+### Exact continuation
+1. Run the three verification commands above; inspect `git status`.
+2. With the owner's locally configured Telegram token, manually test upload -> Analyse
+   vacancy -> weighted report, then add/update an application and verify AI-disabled
+   fallback. Use sample text. Keep OpenAI disabled; never request keys in chat.
+3. If a real vacancy exposes a false match, add an anonymized/synthetic regression to
+   `tests/test_matcher.py`, then adjust `services/matcher.py:extract_requirements` or
+   `evidence_status`. Vocabulary is in `CATALOG`; aliases in `normalize`.
+4. Known limits: English vocabulary coverage, complex negation/alternatives, implicit
+   proficiency and experience dates remain conservative/manual. No unfinished feature
+   is left. Do not claim the score measures all requirements or actual competence.
+5. Commit for this checkpoint: `Improve offline vacancy analysis with weighted requirements`.
+   Find its hash with `git log -1 --oneline`. Use the scoped safe.directory option from
+   the previous checkpoint when running Git under the sandbox account.

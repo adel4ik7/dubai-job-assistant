@@ -4,8 +4,8 @@ Telegram bot for:
 - uploading a CV (PDF/DOCX/TXT);
 - extracting CV text;
 - pasting a vacancy;
-- calculating a simple keyword match score;
-- highlighting matching and missing keywords;
+- classifying vacancy requirements and calculating a weighted local match score;
+- highlighting CV evidence, important gaps and optional gaps;
 - saving job applications in SQLite;
 - updating application status.
 - optional AI CV review, vacancy-specific bullet suggestions, cover-letter drafts and interview questions.
@@ -78,6 +78,9 @@ account with model access and may incur API charges.
 
 ## Optional AI setup
 
+Current development mode is offline heuristic analysis: no OpenAI calls or paid
+services are needed for **Analyse vacancy**. The existing optional AI menu is retained.
+
 Add these settings to your existing `.env` (do not overwrite your Telegram token):
 
 ```env
@@ -139,3 +142,50 @@ Importing `bot` no longer loads secrets, creates a database or starts polling.
 Manual acceptance with your configured bot: upload a sample CV; run local matching;
 save/update an application; exercise each AI action; cancel a pending vacancy; reach
 the daily limit. Restart with `OPENAI_API_KEY` blank and confirm local features work.
+
+## Local vacancy analysis
+
+`services/matcher.py` uses a curated English-language vocabulary and deterministic
+rules, not keyword frequency. It recognizes seven categories: hard skills, tools,
+experience, education/certifications, languages, location/visa and soft skills.
+Standalone filler words (good, looking, preferred, advantage, basic, skills,
+knowledge) cannot become scored requirements. Repetition does not increase weight.
+
+Aliases include Power BI/PowerBI, MS/Microsoft Excel/Excel, SQL/T-SQL/PL/SQL/Structured
+Query Language, Python/Python3/Python programming, and UAE/United Arab Emirates.
+PostgreSQL, MySQL and SQL Server can support a generic SQL requirement, while generic
+SQL does not establish experience with a particular database. Dubai can support a
+UAE location requirement; UAE alone does not establish Dubai residency.
+
+The group weights are hard skills **35%**, tools **20%**, experience **20%**, education
+**10%**, languages and location together **10%**, and soft skills **5%**. Within each
+group mandatory or unspecified requirements weigh 1, optional requirements weigh
+0.25. The group score is matched weight / total requirement weight. Empty groups are
+excluded and remaining group weights are normalized. A wholly optional group also
+receives only a quarter of its usual group weight. For example, with only Python
+and Excel required, an Excel-only CV scores 20 / (35 + 20), or 36%.
+
+Preferred/optional headings and local phrases such as 'an advantage' are recognized.
+Mandatory occurrences override optional duplicates; a higher preferred experience
+threshold stays optional. Simple two-item alternatives such as 'Python or SQL' count
+as one requirement. Years must be explicitly stated in the CV and relevant to the
+required specialization; dates are not summed and unrelated experience is not added.
+Known degree subjects are checked. Negated skills and qualifications in progress do
+not count as established evidence. Requested advanced/fluent proficiency needs an
+explicit level statement. Past Dubai experience and relocation interest do not prove
+current residence; employer-sponsored visa benefits do not become candidate visa
+requirements, and location alone does not prove work authorization.
+
+Reports show overall score, strong matches, important gaps, optional gaps and
+concrete recommendations. Every gap means **insufficient CV evidence**, not proof of
+a missing capability. Recommendations only highlight existing evidence or suggest
+verification/development; they never tell users to add unsupported qualifications.
+Long reports are split into Telegram-safe messages without dropping requirements.
+
+This measures recognized CV evidence, not hiring probability or an official ATS
+score. A small dictionary cannot cover every occupation, degree, language level,
+negation or complex alternative. Bare mentions do not prove competence. Unknown
+requirements need manual review; when none are recognized the score is **N/A**.
+The initial rules target English-language Dubai vacancies; other languages require
+manual review. Add vocabulary in `CATALOG`, normalization in `normalize`, and
+regressions in `tests/test_matcher.py` when extending coverage.
