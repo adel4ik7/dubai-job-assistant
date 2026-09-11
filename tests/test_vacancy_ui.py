@@ -134,3 +134,30 @@ class VacancyUITests(unittest.IsolatedAsyncioTestCase):
         self.update.effective_chat.type = 'group'
         await self.click('v:latest')
         self.assertIn('private chat', self.reply())
+
+    async def test_admin_stats_only_for_configured_owner(self):
+        bot.vacancies.admin_id = 2
+        self.add()
+        await self.click('v:home')
+        self.assertNotIn(text('en', 'v_admin'), self.labels())
+        before = self.message.reply_text.await_count
+        await self.click('v:admin')
+        self.assertEqual(self.message.reply_text.await_count, before)
+        self.update.effective_user.id = 2
+        bot.db.set_language(2, 'ru')
+        await self.click('v:home')
+        self.assertIn('Статистика сбора', self.labels())
+        await self.click('v:admin')
+        self.assertIn('Собрано публикаций: 1', self.reply())
+        self.assertIn('Дубликаты: 0', self.reply())
+
+    async def test_duplicate_source_filter_and_saved_disabled_source(self):
+        vacancy = self.add()
+        other = self.store.add_source('other_jobs')
+        self.store.insert(other, 1, **analyze_text(self.store.get(vacancy)['raw_text']))
+        self.assertEqual(len(self.store.list(source_id=other)), 1)
+        self.store.save(1, vacancy)
+        self.store.enable_source(self.source, False)
+        self.store.enable_source(other, False)
+        self.assertEqual(self.store.list(), [])
+        self.assertEqual(len(self.store.list(saved_user=1)), 1)

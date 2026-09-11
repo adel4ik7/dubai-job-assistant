@@ -287,6 +287,7 @@ def build_application(config: Settings | None=None) -> Application:
     )
     app.add_handler(CommandHandler('help', help_command, filters=filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler('status', status_command, filters=filters.ChatType.PRIVATE))
+    app.add_handler(CommandHandler('collector_stats', vacancies.admin_stats, filters=filters.ChatType.PRIVATE))
     app.add_handler(conversation)
     app.add_error_handler(error_handler)
     return app

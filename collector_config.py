@@ -35,6 +35,7 @@ class CollectorSettings:
     poll_seconds: int = 300
     keep_media: bool = False
     ocr_enabled: bool = False
+    media_retention_days: int = 7
 
 
 def load_collector_settings():
@@ -48,4 +49,5 @@ def load_collector_settings():
     return CollectorSettings(api_id, api_hash, os.getenv('TELEGRAM_PHONE', '').strip(),
         BASE_DIR / 'sessions' / name, BASE_DIR / 'data' / 'bot.sqlite3',
         BASE_DIR / 'collector_media', env_int('VACANCY_POLL_SECONDS', 300, 60, 86400),
-        env_bool('VACANCY_KEEP_MEDIA'), env_bool('VACANCY_OCR_ENABLED'))
+        env_bool('VACANCY_KEEP_MEDIA'), env_bool('VACANCY_OCR_ENABLED'),
+        env_int('VACANCY_MEDIA_RETENTION_DAYS', 7, 1, 30))

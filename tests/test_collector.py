@@ -98,3 +98,47 @@ class CollectorTests(unittest.IsolatedAsyncioTestCase):
                                      'TELEGRAM_SESSION_NAME': '../outside'}, clear=True):
             with self.assertRaises(ValueError):
                 load_collector_settings()
+
+    async def test_cancelled_poll_does_not_advance_uncommitted_message(self):
+        import asyncio
+        self.client.get_messages.return_value = [self.message(3)]
+        self.collector.processor = AsyncMock(side_effect=asyncio.CancelledError)
+        with self.assertRaises(asyncio.CancelledError):
+            await self.collector.run_once(backfill=1)
+        self.assertEqual(self.store.sources()[0]['last_message_id'], 0)
+        self.assertFalse(self.store.has_message(self.source_id, 3))
+
+    async def test_storage_failure_keeps_checkpoint_for_retry(self):
+        self.client.get_messages.return_value = [self.message(2), self.message(1)]
+        original = self.store.insert
+        def insert(source, message, **values):
+            if message == 2:
+                raise OSError('sensitive')
+            return original(source, message, **values)
+        with patch.object(self.store, 'insert', side_effect=insert):
+            await self.collector.run_once(backfill=2)
+        self.assertEqual(self.store.sources()[0]['last_message_id'], 1)
+        await self.collector.run_once(backfill=2)
+        self.assertTrue(self.store.has_message(self.source_id, 2))
+
+    async def test_malformed_post_does_not_block_valid_backfill(self):
+        self.client.get_messages.return_value = [self.message('bad'), self.message(2)]
+        await self.collector.run_once(backfill=2)
+        self.assertTrue(self.store.has_message(self.source_id, 2))
+
+    def test_pending_reprocess_repairs_duplicate_links_and_stats(self):
+        from services.vacancy_pipeline import analyze_text
+        values = analyze_text('Hiring analyst in Dubai. Send CV jobs@example.com')
+        first, _ = self.store.insert(self.source_id, 1, raw_text=values['raw_text'])
+        second, _ = self.store.insert(self.source_id, 2, **values, ocr_status='failed')
+        self.assertEqual(len(self.store.retry_candidates()), 1)
+        self.store.update_pipeline(first, values)
+        self.assertEqual(self.store.get(second)['duplicate_of'], first)
+        self.assertEqual(self.store.stats()['duplicates'], 1)
+        self.assertEqual(self.store.stats()['detected'], 2)
+        self.assertEqual(self.store.stats()['ocr_failures'], 1)
+        self.assertEqual(len(self.store.retry_candidates(ocr_only=True)), 1)
+        # Canonical content can change during OCR retry without orphaning duplicates.
+        changed = analyze_text('Hiring waiter in Sharjah. Send CV other@example.com')
+        self.store.update_pipeline(first, changed)
+        self.assertIsNone(self.store.get(second)['duplicate_of'])

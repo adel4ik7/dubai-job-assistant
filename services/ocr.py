@@ -18,7 +18,8 @@ def preprocess(path: Path, output: Path, threshold=False):
             if image.width * image.height > 20_000_000:
                 raise ValueError('Image exceeds OCR pixel budget')
             image = ImageOps.exif_transpose(image).convert('L')
-            scale = min(2.0, 1000 / image.width) if image.width < 1000 else min(1.0, 2400 / max(image.size))
+            scale = min(2.0, 1000 / image.width) if image.width < 1000 else 1.0
+            scale = min(scale, 2400 / max(image.size))
             image = image.resize((max(1, int(image.width * scale)), max(1, int(image.height * scale))), Image.Resampling.LANCZOS)
             image = ImageEnhance.Contrast(ImageOps.autocontrast(image)).enhance(1.3)
             if threshold:
@@ -34,7 +35,8 @@ class EasyOCREngine:
     def __init__(self, model_dir: Path, download=False):
         import easyocr
         self.reader = easyocr.Reader(['ru', 'en'], gpu=False,
-            model_storage_directory=str(model_dir), download_enabled=download, verbose=False)
+            model_storage_directory=str(model_dir), user_network_directory=str(model_dir / 'user_network'),
+            download_enabled=download, verbose=False)
 
     def read(self, path):
         return cleanup_text('\n'.join(self.reader.readtext(str(path), detail=0, paragraph=False)))

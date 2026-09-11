@@ -1,4 +1,4 @@
-# Dubai Job Assistant — v0.3
+# Dubai Job Assistant — v0.4
 
 ## v0.4 collector (separate process)
 
@@ -63,8 +63,11 @@ resizes, converts a temporary copy to grayscale and enhances contrast. Failures 
 not stop other posts. `VACANCY_KEEP_MEDIA=false` removes temporary files on success
 and failure; true retains originals after successful recognition in `collector_media/`.
 Do not use OCR-derived contact or salary details without checking the original post.
-The automated image fixture tests exercise preprocessing and the pipeline with an
-injected engine, without model downloads; actual OCR accuracy requires local setup.
+The default image fixture tests exercise preprocessing and the pipeline with an
+injected engine, without model downloads. After setup, run the real offline-model
+fixture test with `$env:RUN_OCR_INTEGRATION='1'` and the usual unittest command.
+The synthetic English vacancy image passed real CPU recognition locally; this is
+a smoke test, not a guarantee of quality on complex posters or small/blurred text.
 
 ### Vacancies in the bot (RU/EN)
 
@@ -87,8 +90,30 @@ reading a vacancy is not evidence of an application. Enter the actual date/statu
 if you have applied. The record is inserted only when the entire form is complete;
 /cancel discards the draft. No automatic external application or message is sent.
 
+### Recovery, retention and admin
+
+`python collector.py --reprocess 100` retries up to 100 stored pending/failed texts
+without Telegram login. After enabling OCR, `python collector.py --retry-ocr 50`
+re-reads up to 50 previously failed/disabled/empty image posts and updates their rows;
+it needs the user session. Both limits are capped at 500. Missing/deleted posts are
+left intact. Check failures before retrying; no aggressive automatic retry loop is used.
+
+With `VACANCY_KEEP_MEDIA=true`, retained originals expire after
+`VACANCY_MEDIA_RETENTION_DAYS` (default 7, range 1–30); cleanup runs during collection.
+Only collector-generated retained filenames are eligible. Keep false for minimal
+storage. Stopping the process pauses cleanup; temporary OCR files are cleaned during
+normal success/failure and graceful cancellation. After a forced OS termination,
+inspect orphan `collector_media/ocr_*` folders locally before removing them.
+
+Set `ADMIN_TELEGRAM_ID` to the owner's Telegram user ID to show the private collector
+statistics button and allow `/collector_stats`. Other users receive no stats.
+Counts include all collected posts, collected in 24h, detected/probable vacancies,
+duplicates and current OCR outcomes; resolved OCR failures stop counting as failures.
+Duplicate posts retain all source rows and links. Source filters include forwarded
+copies; saved records remain accessible when collection from a source is disabled.
+
 A local Telegram assistant for early testers. It helps users organize CVs, compare
-vacancies and track applications. **v0.3 makes no OpenAI calls and uses no paid
+vacancies and track applications. **v0.4 makes no OpenAI calls and uses no paid
 services**, even if an old `.env` contains an OpenAI key. AI provider code remains
 for compatibility; its production menu fallback reports that AI is disabled.
 
@@ -141,8 +166,8 @@ requirement labels are in `locales/requirement_labels_ru.json`. Add matching key
 and named placeholders to both catalogs; never run translation on arbitrary user
 values. No translation API or extra dependency is used.
 
-Use a **private chat** with the bot. The six sections are Profile, CVs, Analyse
-vacancy, Applications, Dashboard and Help. `/start` or `/menu` opens the menu;
+Use a **private chat** with the bot. The sections are Profile, CVs, Analyse
+vacancy, Vacancies, Applications, Dashboard and Help. `/start` or `/menu` opens the menu;
 `/cancel` stops an unfinished form without saving it. Forms and the last analysis
 are held in memory and expire when the bot restarts; completed records persist.
 

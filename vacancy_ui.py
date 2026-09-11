@@ -29,6 +29,8 @@ class VacancyUI:
         rows = [[(tr('v_latest'), 'v:latest'), (tr('v_best'), 'v:best')],
                 [(tr('v_search'), 'v:search'), (tr('v_filters'), 'v:filters')],
                 [(tr('v_saved'), 'v:saved')], [(tr('main_menu'), 'p:home')]]
+        if self.admin_id and update.effective_user.id == self.admin_id:
+            rows.insert(-1, [(tr('v_admin'), 'v:admin')])
         await self.product.reply(update, tr('v_menu'), markup(rows))
 
     async def listing(self, update, context, mode='latest', offset=0):
@@ -127,6 +129,8 @@ class VacancyUI:
         try:
             if action == 'home':
                 await self.menu(update, context)
+            elif action == 'admin':
+                await self.admin_stats(update, context)
             elif action in {'latest', 'best', 'saved'}:
                 await self.listing(update, context, action)
             elif action == 'next':
@@ -182,3 +186,12 @@ class VacancyUI:
         except (ValueError, KeyError, IndexError):
             await self.product.reply(update, tr('v_stale'))
             return END
+
+    async def admin_stats(self, update, context):
+        if not self.admin_id or update.effective_user.id != self.admin_id:
+            return END
+        tr = self.product.translator(update)
+        stats = self.store.stats()
+        await self.product.reply(update, tr('v_admin') + '\n' + '\n'.join(
+            tr('v_stat_' + key) + ': ' + str(value or 0) for key, value in stats.items()))
+        return END

@@ -5,7 +5,7 @@
   safe first-run baseline, bounded backfill, source controls and checkpointing.
 - [x] v0.4b: local OCR, preprocessing, vacancy detection, conservative field parser.
 - [x] v0.4c: localized Vacancies UI, bounded CV ranking, saved and application conversion.
-- [ ] v0.4d: content deduplication, admin stats, recovery/hardening and final verification.
+- [x] v0.4d: content deduplication, admin stats, recovery/hardening and final verification.
 - v0.4b now processes new posts with `VacancyPipeline`; bot screens are next.
   Existing user/profile/CV/application tables are preserved. No Telegram login was
   performed. Source seed is `sources.json`; SQLite becomes authoritative after seeding.
@@ -19,8 +19,30 @@
   privacy cleanup, combined filters and review/edit/cancel application conversion.
   `vacancy_ui.py` shares ProductUI reports/forms. `db.py` adds application source_url
   and deletes private saved links on erasure; public vacancies remain.
-- Exact next step: admin stats, retained-media expiry, reprocessing of old pending/
-  failed rows, additional hardening tests and final documentation/checks.
+- v0.4d: canonical hash dedup keeps each source/message row, including during retry;
+  source filters find reposts. Admin-only counts use current processing outcomes.
+  Retained images expire after configured 1–30 days; false removes all temporary
+  images. `--reprocess N` retries stored texts offline; `--retry-ocr N` fetches only
+  bounded failed/disabled image posts from configured enabled public channels.
+- Failure/cancellation tests verify checkpoints only advance after persistence,
+  FloodWait sleeps as instructed, malformed posts do not block the rest, unsafe
+  sources are refused, and logs omit exception contents. Existing v0.3/RU-EN tests
+  still run unchanged except intentional additive menu/schema expectations.
+- Local dependencies: Telethon 1.45.0, Pillow 12.3.0, EasyOCR 1.7.2, CPU torch
+  2.14.0 and torchvision 0.29.0 installed successfully. `--prepare-ocr` downloaded
+  EN/RU models into ignored `ocr_models/`. Real English fixture recognition passed
+  with network blocked in the test. No Telegram authorization or live polling ran.
+- Final verification passed: 118 tests with `RUN_OCR_INTEGRATION=1` (otherwise one
+  optional model test skips), compileall, pip check and git diff --check. Staged-file
+  audit before commit excludes models, session files, .env, data and uploads.
+- Exact next step after final commit: owner fills collector keys in existing .env,
+  sets `VACANCY_OCR_ENABLED=true` if wanted, runs `collector.py --backfill 50` locally
+  and completes hidden phone/code/2FA prompts. Start bot separately; test latest,
+  filters, best matches, saved -> application review, RU/EN and admin with two users.
+  Do not add OpenAI, payments, auto-apply, unsolicited messages or Mini App.
+- Implementation is complete; only owner-authorized live Telegram acceptance remains.
+  v0.4 commits: ca2a3b8 (a), 20bcfa1 (b), f2159e0 (c); final d commit title:
+  `Harden v0.4 collector recovery privacy and local OCR verification`.
 
 ## Current checkpoint — RU/EN localization (2026-09-11)
 

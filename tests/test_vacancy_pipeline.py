@@ -88,6 +88,27 @@ class VacancyParsingTests(unittest.TestCase):
                 self.assertEqual(result.mode, 'L')
                 self.assertEqual(result.size, (600, 300))
 
+    def test_media_retention_only_removes_expired_generated_files(self):
+        import os
+        import time
+        from services.vacancy_pipeline import prune_media
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            for name in ('1_2.image', '1_3.image', 'personal.png'):
+                (root / name).write_bytes(b'fixture')
+            for name in ('1_2.image', 'personal.png'):
+                os.utime(root / name, (time.time() - 10 * 86400,) * 2)
+            prune_media(root, 7)
+            self.assertFalse((root / '1_2.image').exists())
+            self.assertTrue((root / '1_3.image').exists())
+            self.assertTrue((root / 'personal.png').exists())
+
+    def test_phone_variants_and_source_footer_not_a_contact(self):
+        for value in ('+971 (0)50 123 4567', '00971 50 123 4567', '971501234567'):
+            self.assertEqual(contacts(value)['phone'], '+971501234567')
+        self.assertIsNone(contacts('Source: @channel_a')['telegram_contact'])
+        self.assertEqual(contacts('Contact https://t.me/hr_dubai')['telegram_contact'], '@hr_dubai')
+
 
 class OCRPipelineTests(unittest.IsolatedAsyncioTestCase):
     async def test_local_fixture_pipeline_cleanup_and_failure(self):

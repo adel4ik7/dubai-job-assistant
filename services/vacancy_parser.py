@@ -4,7 +4,7 @@ import re
 from services.matcher import extract_requirements
 
 EMAIL = re.compile(r'(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+', re.I)
-PHONE = re.compile(r'(?<!\d)(?:(?:\+|00)971[\s().-]*(?:0[\s().-]*)?|0)(?:5[024568]|[234679])[\s().-]*\d(?:[\s().-]*\d){6}(?!\d)')
+PHONE = re.compile(r'(?<!\d)(?:(?:\+|00)?971[\s().-]*(?:0[\s().-]*)?|0)(?:5[024568]|[234679])[\s().-]*\d(?:[\s().-]*\d){6}(?!\d)')
 CONTACT = re.compile(r'(?<![\w@])@[a-zA-Z][\w]{3,31}\b')
 URL = re.compile(r'https?://[^\s<>]+', re.I)
 LOCATION = re.compile(r'\b(?:Dubai|Abu Dhabi|Sharjah|UAE|United Arab Emirates)\b|Дубай|Дубае|Абу[ -]Даби|Шарджа|Шардже|ОАЭ', re.I)
@@ -17,15 +17,19 @@ CURRENCY = r'(?:AED|Dhs?\.?|дирхам(?:ов|а)?)'
 
 
 def contacts(text):
+    text = re.sub(r'(?im)^\s*(?:source|источник|forwarded from|переслано из)\s*[:–-].*$', '', text)
     email = EMAIL.search(text)
     phone = PHONE.search(text)
     telegram = CONTACT.search(EMAIL.sub('', text))
     normalized_phone = None
     if phone:
         digits = re.sub(r'\D', '', phone[0])
-        normalized_phone = '+' + (digits[2:] if digits.startswith('00') else '971' + digits[1:] if digits.startswith('0') else digits)
+        digits = digits[2:] if digits.startswith('00') else digits
+        digits = '971' + digits[1:] if digits.startswith('0') else digits
+        normalized_phone = '+' + re.sub(r'^9710', '971', digits)
+    telegram_link = re.search(r'https?://t\.me/([a-zA-Z][\w]{3,31})(?![\w/])(?:\s|$)', text)
     return dict(email=email[0].lower() if email else None, phone=normalized_phone,
-                telegram_contact=telegram[0] if telegram else None)
+                telegram_contact=telegram[0] if telegram else '@' + telegram_link[1] if telegram_link else None)
 
 
 def salary(text):
@@ -56,7 +60,7 @@ def parse_vacancy(text):
     title = re.search(r'^(?:job title|position|role|должность|вакансия)\s*[:–-]\s*([^\n]+)', text, re.I | re.M)
     if not title:
         title = re.search(r'^(?:we are hiring|hiring|требуется|ищем)\s*[:–-]\s*([^\n]+)', text, re.I | re.M)
-    known_role = ROLES.search(text)
+    known_role = ROLES.search(URL.sub('', EMAIL.sub('', text)))
     result['role'] = title[1].strip()[:200] if title else known_role[0] if known_role else None
     company = re.search(r'^(?:company|employer|компания|работодатель)\s*[:–-]\s*([^\n]+)', text, re.I | re.M)
     result['company'] = company[1].strip()[:200] if company else None
@@ -67,6 +71,9 @@ def parse_vacancy(text):
     requirements = extract_requirements(text)
     result['skills'] = list(dict.fromkeys(r.label for r in requirements if r.category in {'hard_skills', 'tools'})) or None
     result['languages'] = list(dict.fromkeys(r.label for r in requirements if r.category == 'languages')) or None
+    russian_languages = [m[0] for m in re.finditer(r'английск\w*|арабск\w*|русск\w*', text, re.I)]
+    if russian_languages:
+        result['languages'] = list(dict.fromkeys((result['languages'] or []) + russian_languages))
     urls = [m[0].rstrip('.,;)') for m in URL.finditer(text)]
     # An explicit apply link is preferred; otherwise preserve a non-source web URL.
     apply_link = re.search(r'(?:apply|отклик)[^\n]{0,35}?(https?://[^\s<>]+)', text, re.I)

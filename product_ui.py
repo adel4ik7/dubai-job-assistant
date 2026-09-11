@@ -33,7 +33,7 @@ class ProductUI:
 
     async def language_menu(self, update, context):
         tr = self.translator(update)
-        for key in ('form', 'cv_delete', 'delete_confirmation', 'ai_action'):
+        for key in ('form', 'cv_delete', 'delete_confirmation', 'ai_action', 'vacancy_input'):
             context.user_data.pop(key, None)
         await self.reply(update, tr('language_prompt'), keyboard([
             [(tr('language_en'), 'p:lang:en')], [(tr('language_ru'), 'p:lang:ru')]]))

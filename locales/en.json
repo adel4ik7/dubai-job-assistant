@@ -245,5 +245,13 @@
   "v_prompt_days": "Published within the last N days (1–365). - clears; /cancel cancels.",
   "v_keep_value": "Keep: {value}",
   "v_review_draft": "Review the prefilled fields; keep or replace each value. This starts as Saved with no applied date: collecting a vacancy does not mean you applied. Nothing is saved until the form finishes.",
-  "field_source_url": "Original post URL"
+  "field_source_url": "Original post URL",
+  "v_admin": "Collector statistics",
+  "v_stat_sources": "Sources",
+  "v_stat_collected": "Collected posts",
+  "v_stat_last_24h": "Collected in last 24h",
+  "v_stat_ocr_processed": "OCR processed",
+  "v_stat_ocr_failures": "OCR failures (current)",
+  "v_stat_detected": "Detected vacancies",
+  "v_stat_duplicates": "Duplicates"
 }

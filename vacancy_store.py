@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS vacancies (
     UNIQUE(source_id, source_message_id)
 );
 CREATE INDEX IF NOT EXISTS vacancies_hash ON vacancies(content_hash);
+CREATE INDEX IF NOT EXISTS vacancies_duplicate ON vacancies(duplicate_of);
 CREATE INDEX IF NOT EXISTS vacancies_recent ON vacancies(published_at DESC, id DESC);
 CREATE TABLE IF NOT EXISTS user_saved_vacancies (
     user_id INTEGER NOT NULL,
@@ -123,7 +124,9 @@ class VacancyStore:
 
     def list(self, *, limit=100, offset=0, search='', location='', salary_min=None,
              source_id=None, days=None, saved_user=None):
-        clauses = ["v.detection_status IN ('vacancy','probably_vacancy')", 'v.duplicate_of IS NULL', 's.enabled=1']
+        clauses = ["v.detection_status IN ('vacancy','probably_vacancy')", 'v.duplicate_of IS NULL']
+        if saved_user is None:
+            clauses.append('(s.enabled=1 OR EXISTS(SELECT 1 FROM vacancies d JOIN vacancy_sources ds ON ds.id=d.source_id WHERE d.duplicate_of=v.id AND ds.enabled=1))')
         values = []
         if search:
             clauses.append("(instr(casefold(v.role),casefold(?))>0 OR instr(casefold(v.company),casefold(?))>0 OR instr(casefold(v.combined_text),casefold(?))>0)")
@@ -135,18 +138,18 @@ class VacancyStore:
             clauses.append("v.salary_currency='AED' AND v.salary_min>=?")
             values.append(salary_min)
         if source_id is not None:
-            clauses.append('v.source_id=?')
-            values.append(source_id)
+            clauses.append('(v.source_id=? OR EXISTS(SELECT 1 FROM vacancies d WHERE d.duplicate_of=v.id AND d.source_id=?))')
+            values.extend([source_id, source_id])
         if days is not None:
             clauses.append("julianday(v.published_at)>=julianday('now', ?)")
             values.append(f'-{int(days)} days')
         if saved_user is not None:
-            clauses.append('EXISTS(SELECT 1 FROM user_saved_vacancies u WHERE u.vacancy_id=v.id AND u.user_id=?)')
+            clauses.append('EXISTS(SELECT 1 FROM user_saved_vacancies u JOIN vacancies saved ON saved.id=u.vacancy_id WHERE (saved.id=v.id OR saved.duplicate_of=v.id) AND u.user_id=?)')
             values.append(saved_user)
         with self.db._connect() as conn:
             return [dict(r) for r in conn.execute(
                 'SELECT v.*,s.title AS source_title FROM vacancies v JOIN vacancy_sources s ON s.id=v.source_id WHERE ' +
-                ' AND '.join(clauses) + ' ORDER BY julianday(v.published_at) DESC,v.id DESC LIMIT ? OFFSET ?',
+                ' AND '.join(clauses) + ' ORDER BY v.published_at DESC,v.id DESC LIMIT ? OFFSET ?',
                 (*values, min(100, max(1, limit)), max(0, offset)))]
 
     def save(self, user_id, vacancy_id):
@@ -160,12 +163,46 @@ class VacancyStore:
 
     def unsave(self, user_id, vacancy_id):
         with self.db._connect() as conn:
-            conn.execute('DELETE FROM user_saved_vacancies WHERE user_id=? AND vacancy_id=?', (user_id, vacancy_id))
+            conn.execute('DELETE FROM user_saved_vacancies WHERE user_id=? AND vacancy_id IN (SELECT id FROM vacancies WHERE id=? OR duplicate_of=?)',
+                         (user_id, vacancy_id, vacancy_id))
 
     def is_saved(self, user_id, vacancy_id):
         with self.db._connect() as conn:
-            return conn.execute('SELECT 1 FROM user_saved_vacancies WHERE user_id=? AND vacancy_id=?',
-                                (user_id, vacancy_id)).fetchone() is not None
+            return conn.execute('SELECT 1 FROM user_saved_vacancies u JOIN vacancies v ON v.id=u.vacancy_id WHERE u.user_id=? AND (v.id=? OR v.duplicate_of=?)',
+                                (user_id, vacancy_id, vacancy_id)).fetchone() is not None
+
+    def stats(self):
+        with self.db._connect() as conn:
+            return dict(conn.execute("""SELECT
+                (SELECT COUNT(*) FROM vacancy_sources) AS sources,
+                COUNT(*) AS collected,
+                SUM(collected_at>=datetime('now','-1 day')) AS last_24h,
+                SUM(ocr_status IN ('processed','empty')) AS ocr_processed,
+                SUM(ocr_status='failed') AS ocr_failures,
+                SUM(detection_status IN ('vacancy','probably_vacancy')) AS detected,
+                SUM(duplicate_of IS NOT NULL) AS duplicates FROM vacancies""").fetchone())
+
+    def retry_candidates(self, limit=100, ocr_only=False):
+        condition = "v.ocr_status IN ('failed','unavailable','disabled','empty')" if ocr_only else "v.detection_status='pending' OR v.processing_error IS NOT NULL"
+        with self.db._connect() as conn:
+            return [dict(r) for r in conn.execute('SELECT v.* FROM vacancies v JOIN vacancy_sources s ON s.id=v.source_id WHERE s.enabled=1 AND (' + condition + ') ORDER BY v.id LIMIT ?',
+                                                 (min(500, max(1, limit)),))]
+
+    def update_pipeline(self, vacancy_id, values):
+        if not values or set(values) - set(FIELDS):
+            raise ValueError('Unknown pipeline fields')
+        with self.db._connect() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            old = conn.execute('SELECT content_hash FROM vacancies WHERE id=?', (vacancy_id,)).fetchone()
+            if not old:
+                return
+            conn.execute('UPDATE vacancies SET ' + ','.join(k + '=?' for k in values) + ',processing_error=NULL WHERE id=?',
+                         (*values.values(), vacancy_id))
+            conn.execute('UPDATE vacancies SET duplicate_of=NULL WHERE id=?', (vacancy_id,))
+            for fingerprint in {old[0], values.get('content_hash')} - {None}:
+                canonical = conn.execute('SELECT MIN(id) FROM vacancies WHERE content_hash=?', (fingerprint,)).fetchone()[0]
+                conn.execute('UPDATE vacancies SET duplicate_of=CASE WHEN id=? THEN NULL ELSE ? END WHERE content_hash=?',
+                             (canonical, canonical, fingerprint))
 
 
 def salary_label(vacancy):
