@@ -54,6 +54,18 @@ class CollectorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.add_source('test_jobs'), self.source_id)
         self.assertEqual(self.store.sources(enabled_only=True), [])
 
+    async def test_new_enabled_sources_picked_up_on_next_poll(self):
+        self.client.get_messages.return_value = [self.message(10)]
+        await self.collector.run_once()
+        self.store.enable_source(self.source_id, False)
+        other_id = self.store.add_source('russian_jobs', 'Работа в Дубае')
+        self.store.add_source('disabled_jobs', enabled=False)
+        self.entity.username = 'russian_jobs'
+        self.client.get_entity.reset_mock()
+        await self.collector.run_once()
+        self.client.get_entity.assert_awaited_once_with('russian_jobs')
+        self.assertEqual(self.store.resolve_source(other_id)['last_message_id'], 10)
+
     async def test_processing_failure_does_not_lose_later_messages(self):
         self.client.get_messages.return_value = [self.message(3), self.message(2)]
         self.collector.processor = AsyncMock(side_effect=[ValueError('private-content'), {}])

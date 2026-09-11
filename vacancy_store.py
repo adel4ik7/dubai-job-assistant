@@ -2,6 +2,7 @@
 import json
 import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 SCHEMA = '''
@@ -13,7 +14,8 @@ CREATE TABLE IF NOT EXISTS vacancy_sources (
     source_type TEXT NOT NULL DEFAULT 'telegram_channel',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_message_id INTEGER NOT NULL DEFAULT 0,
-    last_checked_at TEXT
+    last_checked_at TEXT,
+    removed_at TEXT
 );
 CREATE TABLE IF NOT EXISTS vacancies (
     id INTEGER PRIMARY KEY,
@@ -56,34 +58,83 @@ FIELDS = ('source_url', 'published_at', 'raw_text', 'ocr_text', 'combined_text',
           'content_hash', 'ocr_status', 'processing_error')
 
 
+def normalize_source(value):
+    value = str(value).strip()
+    if value.lower().startswith(('t.me/', 'www.t.me/')):
+        value = 'https://' + value
+    if '://' in value:
+        url = urlsplit(value)
+        if url.scheme not in {'http', 'https'} or url.netloc.lower() not in {'t.me', 'www.t.me'} or url.query or url.fragment:
+            raise ValueError('Use a public t.me channel link or username.')
+        parts = url.path.strip('/').split('/')
+        if len(parts) == 2 and parts[0] == 's':
+            parts = parts[1:]
+        if len(parts) != 1:
+            raise ValueError('Use the channel link, not a private invite or post link.')
+        value = parts[0]
+    value = value.removeprefix('@')
+    if not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_]{3,31}', value):
+        raise ValueError('Use a public Telegram channel username.')
+    return value.lower()
+
+
 class VacancyStore:
     def __init__(self, database):
         self.db = database
         with self.db._connect() as conn:
             conn.executescript(SCHEMA)
+            columns = {r['name'] for r in conn.execute('PRAGMA table_info(vacancy_sources)')}
+            if 'removed_at' not in columns:
+                conn.execute('ALTER TABLE vacancy_sources ADD COLUMN removed_at TEXT')
 
-    def add_source(self, username, title=None, enabled=True, source_type='telegram_channel'):
-        username = username.removeprefix('@')
-        if not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_]{3,31}', username) or source_type != 'telegram_channel':
+    def add_source(self, username, title=None, enabled=True, source_type='telegram_channel', *, restore_removed=True):
+        username = normalize_source(username)
+        if source_type != 'telegram_channel':
             raise ValueError('Use a public Telegram channel username.')
+        if title is not None and (not 1 <= len(title.strip()) <= 200 or any(ord(c) < 32 for c in title)):
+            raise ValueError('Source title must have 1-200 characters without control characters.')
         with self.db._connect() as conn:
             conn.execute('INSERT OR IGNORE INTO vacancy_sources(telegram_username,title,enabled,source_type) VALUES (?,?,?,?)',
                          (username.lower(), title or username, int(enabled), source_type))
+            if restore_removed:
+                conn.execute('UPDATE vacancy_sources SET enabled=?,removed_at=NULL WHERE telegram_username=? AND removed_at IS NOT NULL',
+                             (int(enabled), username))
+                if title is not None:
+                    conn.execute('UPDATE vacancy_sources SET title=? WHERE telegram_username=?', (title.strip(), username))
             return conn.execute('SELECT id FROM vacancy_sources WHERE telegram_username=?', (username,)).fetchone()[0]
 
     def seed_sources(self, path: Path):
         for source in json.loads(path.read_text(encoding='utf-8')):
             self.add_source(source['telegram_username'], source.get('title'),
-                            source.get('enabled', True), source.get('source_type', 'telegram_channel'))
+                            source.get('enabled', True), source.get('source_type', 'telegram_channel'), restore_removed=False)
 
-    def sources(self, enabled_only=False):
+    def sources(self, enabled_only=False, include_removed=False):
         with self.db._connect() as conn:
             return [dict(r) for r in conn.execute('SELECT * FROM vacancy_sources' +
-                    (' WHERE enabled=1' if enabled_only else '') + ' ORDER BY id')]
+                    (' WHERE enabled=1 AND removed_at IS NULL' if enabled_only else '' if include_removed else ' WHERE removed_at IS NULL') + ' ORDER BY id')]
+
+    def resolve_source(self, reference):
+        value = str(reference).strip()
+        by_id = value.isascii() and value.isdigit()
+        with self.db._connect() as conn:
+            row = conn.execute('SELECT * FROM vacancy_sources WHERE ' + ('id=?' if by_id else 'telegram_username=?'),
+                               (int(value) if by_id else normalize_source(value),)).fetchone()
+            if not row:
+                raise ValueError('Source not found. Use --list-sources.')
+            return dict(row)
 
     def enable_source(self, source_id, enabled):
+        source = self.resolve_source(source_id)
+        if enabled and source['removed_at']:
+            raise ValueError('Source removed. Explicitly --add-source to restore it.')
         with self.db._connect() as conn:
-            conn.execute('UPDATE vacancy_sources SET enabled=? WHERE id=?', (int(enabled), source_id))
+            conn.execute('UPDATE vacancy_sources SET enabled=? WHERE id=?', (int(enabled), source['id']))
+
+    def remove_source(self, reference):
+        source = self.resolve_source(reference)
+        with self.db._connect() as conn:
+            conn.execute('UPDATE vacancy_sources SET enabled=0,removed_at=COALESCE(removed_at,CURRENT_TIMESTAMP) WHERE id=?', (source['id'],))
+        return source['id']
 
     def checkpoint(self, source_id, message_id):
         with self.db._connect() as conn:

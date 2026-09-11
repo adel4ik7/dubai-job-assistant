@@ -11,7 +11,7 @@ from telethon import TelegramClient, errors, types
 from collector_config import load_collector_settings
 from config import BASE_DIR
 from db import Database
-from vacancy_store import VacancyStore
+from vacancy_store import VacancyStore, normalize_source
 from services.vacancy_pipeline import VacancyPipeline, analyze_text, prune_media
 from services.collector_diagnostics import Diagnostics
 
@@ -180,14 +180,20 @@ async def run(args):
                 log.warning('Reprocessing failed; vacancy_id=%s', row['id'])
         return
     if args.add_source:
-        store.add_source(args.add_source)
+        source_id = store.add_source(args.add_source, title=args.source_title)
+        log.info('Source added or already present; source_id=%s', source_id)
+        return
+    if args.remove_source:
+        source_id = store.remove_source(args.remove_source)
+        log.info('Source removed from collection; existing posts retained; source_id=%s', source_id)
         return
     if args.disable_source or args.enable_source:
         store.enable_source(args.disable_source or args.enable_source, bool(args.enable_source))
         return
     if args.list_sources:
-        for source in store.sources():
-            print(source['id'], source['telegram_username'], 'enabled' if source['enabled'] else 'disabled')
+        for source in store.sources(include_removed=True):
+            print(source['id'], source['telegram_username'], source['title'],
+                  'removed' if source['removed_at'] else 'enabled' if source['enabled'] else 'disabled')
         return
     settings = load_collector_settings()
     log.info('OCR configured: %s', 'enabled' if settings.ocr_enabled else 'disabled (image-only posts cannot be detected; set VACANCY_OCR_ENABLED=true)')
@@ -343,11 +349,20 @@ def main():
     group.add_argument('--retry-ocr', type=bounded_backfill, metavar='N', help='Retry up to N failed/disabled images from Telegram.')
     group.add_argument('--reprocess-message', nargs=2, metavar=('SOURCE', 'MESSAGE_ID'), help='Read and reprocess exactly one configured public-channel post, without advancing its cursor.')
     group.add_argument('--reprocess-backfill', nargs=2, metavar=('SOURCE', 'N'), help='Reprocess latest 1-500 posts of one configured source, updating existing rows without advancing its cursor.')
-    group.add_argument('--add-source', metavar='USERNAME')
+    group.add_argument('--add-source', metavar='USERNAME_OR_LINK')
+    parser.add_argument('--source-title', help='Optional RU/EN display name with --add-source.')
     group.add_argument('--list-sources', action='store_true')
-    group.add_argument('--disable-source', type=int, metavar='ID')
-    group.add_argument('--enable-source', type=int, metavar='ID')
+    group.add_argument('--disable-source', metavar='ID_OR_USERNAME_OR_LINK')
+    group.add_argument('--enable-source', metavar='ID_OR_USERNAME_OR_LINK')
+    group.add_argument('--remove-source', metavar='ID_OR_USERNAME_OR_LINK', help='Stop collection without deleting vacancies or saved links; explicit add restores it.')
     args = parser.parse_args()
+    if args.source_title is not None and not args.add_source:
+        parser.error('--source-title requires --add-source.')
+    if args.add_source:
+        try:
+            args.add_source = normalize_source(args.add_source)
+        except ValueError as exc:
+            parser.error(str(exc))
     if args.reprocess_backfill:
         username, number = args.reprocess_backfill
         if args.backfill is not None:

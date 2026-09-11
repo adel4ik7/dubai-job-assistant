@@ -26,8 +26,27 @@ password. Authentication remains local; no credentials are requested through the
 Stop with Ctrl+C. The collector disconnects gracefully. Run one collector per session.
 
 `sources.json` seeds `jobs_in_dubai` once. Sources and cursors then persist in SQLite.
-Source-management commands need no login: `python collector.py --list-sources`,
-`--add-source CHANNEL_USERNAME`, `--disable-source ID`, `--enable-source ID`.
+Source-management commands work offline without Telegram login or API settings:
+
+```powershell
+python collector.py --add-source https://t.me/CHANNEL --source-title "Работа / Jobs"
+python collector.py --list-sources
+python collector.py --disable-source CHANNEL
+python collector.py --enable-source CHANNEL
+python collector.py --remove-source CHANNEL
+```
+
+Usernames, @usernames and public t.me channel links are accepted; enable/disable/remove
+also accept the numeric ID from the list. Names may be Russian or English. Repeated
+adds keep the same source ID; supplying a title updates its display name. Invite links
+and individual post links are rejected. Normal collection picks up all enabled sources
+on its next poll, without code changes or a restart.
+
+Removal is soft: it stops collection and marks the source as removed in the admin
+list, retaining posts, saved links and its cursor. Startup seeding never restores it
+or overrides user titles/enabled preferences. Explicit `--add-source` restores a
+removed source with its original ID and cursor. Use disable/enable for a temporary
+pause. Old databases gain an additive column; existing user records are preserved.
 Only explicitly configured public broadcast channels are read; private chats/groups
 are refused. It never joins channels, sends messages or applies for jobs.
 On an uninitialized source the normal run establishes a current-post baseline,

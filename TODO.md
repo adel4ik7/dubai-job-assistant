@@ -1,5 +1,24 @@
 # Dubai Job Assistant — TODO
 
+## Multi-source management completed — 2026-09-11
+- Added username/@username/public t.me link normalization, case-insensitive unique
+  sources, RU/EN display titles, and CLI add/list/enable/disable/remove operations.
+  Numeric IDs remain supported for enable/disable/remove. Commands work offline.
+- Safe removal marks a source disabled/removed, retaining vacancies, saved links,
+  source IDs and collection cursors. Explicit add restores it; startup seed does not.
+  Existing jobs_in_dubai and custom titles/settings are preserved. New enabled
+  sources are picked up on the next normal polling cycle without code changes.
+- Additive removed_at migration preserves old source rows and user data.
+- Verification: 138 tests passed, including real local OCR, Unicode path regression,
+  source migration, offline CLI, title/link normalization, retained saved vacancies,
+  and dynamic enabled-source collection. Full compileall, pip check and diff check pass.
+- Earlier milestone commits: 0cac47d (manual Unicode OCR fix), 80419fa (reprocess logs).
+- Commit for this milestone: `Add safe offline multi-source management`.
+- No unfinished implementation remains. Next operational step: optionally add real
+  sources using the documented CLI and run --reprocess-backfill jobs_in_dubai 50
+  after stopping any collector sharing its session. No live Telegram replay or
+  modification of user records was performed during these tests. No AI/paid APIs.
+
 ## Reprocess-backfill log completion — 2026-09-11
 - Existing bounded mode from 62ac542 retained; no duplicate implementation added.
 - Added explicit updated/duplicate/skipped outcomes, photo OCR rerun requests and
