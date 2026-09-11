@@ -120,3 +120,65 @@ class VacancyStore:
             row = conn.execute('SELECT v.*,s.title AS source_title FROM vacancies v JOIN vacancy_sources s ON s.id=v.source_id WHERE v.id=?',
                                (vacancy_id,)).fetchone()
             return dict(row) if row else None
+
+    def list(self, *, limit=100, offset=0, search='', location='', salary_min=None,
+             source_id=None, days=None, saved_user=None):
+        clauses = ["v.detection_status IN ('vacancy','probably_vacancy')", 'v.duplicate_of IS NULL', 's.enabled=1']
+        values = []
+        if search:
+            clauses.append("(instr(casefold(v.role),casefold(?))>0 OR instr(casefold(v.company),casefold(?))>0 OR instr(casefold(v.combined_text),casefold(?))>0)")
+            values.extend([search] * 3)
+        if location:
+            clauses.append('instr(casefold(v.location),casefold(?))>0')
+            values.append(location)
+        if salary_min is not None:
+            clauses.append("v.salary_currency='AED' AND v.salary_min>=?")
+            values.append(salary_min)
+        if source_id is not None:
+            clauses.append('v.source_id=?')
+            values.append(source_id)
+        if days is not None:
+            clauses.append("julianday(v.published_at)>=julianday('now', ?)")
+            values.append(f'-{int(days)} days')
+        if saved_user is not None:
+            clauses.append('EXISTS(SELECT 1 FROM user_saved_vacancies u WHERE u.vacancy_id=v.id AND u.user_id=?)')
+            values.append(saved_user)
+        with self.db._connect() as conn:
+            return [dict(r) for r in conn.execute(
+                'SELECT v.*,s.title AS source_title FROM vacancies v JOIN vacancy_sources s ON s.id=v.source_id WHERE ' +
+                ' AND '.join(clauses) + ' ORDER BY julianday(v.published_at) DESC,v.id DESC LIMIT ? OFFSET ?',
+                (*values, min(100, max(1, limit)), max(0, offset)))]
+
+    def save(self, user_id, vacancy_id):
+        row = self.get(vacancy_id)
+        if not row or row['detection_status'] not in {'vacancy', 'probably_vacancy'}:
+            return False
+        with self.db._connect() as conn:
+            conn.execute('INSERT OR IGNORE INTO user_saved_vacancies(user_id,vacancy_id) VALUES (?,?)',
+                         (user_id, row['duplicate_of'] or vacancy_id))
+        return True
+
+    def unsave(self, user_id, vacancy_id):
+        with self.db._connect() as conn:
+            conn.execute('DELETE FROM user_saved_vacancies WHERE user_id=? AND vacancy_id=?', (user_id, vacancy_id))
+
+    def is_saved(self, user_id, vacancy_id):
+        with self.db._connect() as conn:
+            return conn.execute('SELECT 1 FROM user_saved_vacancies WHERE user_id=? AND vacancy_id=?',
+                                (user_id, vacancy_id)).fetchone() is not None
+
+
+def salary_label(vacancy):
+    if vacancy.get('salary_min') is None:
+        return ''
+    low, high = vacancy['salary_min'], vacancy.get('salary_max')
+    amount = f'{low:g}' + (f'–{high:g}' if high is not None and high != low else '')
+    return amount + (' ' + vacancy['salary_currency'] if vacancy.get('salary_currency') else '')
+
+
+def application_defaults(vacancy):
+    """Prefill a reviewable Saved draft; collecting a post is not an application."""
+    return dict(company=vacancy.get('company') or '', role=vacancy.get('role') or '',
+                status='saved', source=vacancy.get('source_title') or '', salary=salary_label(vacancy),
+                date_applied='', notes='', source_url=vacancy.get('source_url') or '',
+                vacancy_text=vacancy['combined_text'])

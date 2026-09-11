@@ -17,6 +17,7 @@ class Settings:
     uploads_dir: Path
     openai_model: str = "gpt-4o-mini"
     ai_daily_limit: int = 5
+    vacancy_match_window: int = 100
 
 
 def load_settings() -> Settings:
@@ -41,6 +42,13 @@ def load_settings() -> Settings:
     data_dir.mkdir(exist_ok=True)
     uploads_dir.mkdir(exist_ok=True)
 
+    try:
+        match_window = int(os.getenv('VACANCY_MATCH_WINDOW', '100'))
+        if not 1 <= match_window <= 100:
+            raise ValueError
+    except ValueError:
+        raise RuntimeError('VACANCY_MATCH_WINDOW must be between 1 and 100.') from None
+
     return Settings(
         telegram_bot_token=token,
         admin_telegram_id=admin_id,
@@ -49,4 +57,5 @@ def load_settings() -> Settings:
         uploads_dir=uploads_dir,
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini",
         ai_daily_limit=daily_limit,
+        vacancy_match_window=match_window,
     )

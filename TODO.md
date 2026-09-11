@@ -4,7 +4,7 @@
 - [x] v0.4a: separate Telethon process, local source configuration/SQLite tables,
   safe first-run baseline, bounded backfill, source controls and checkpointing.
 - [x] v0.4b: local OCR, preprocessing, vacancy detection, conservative field parser.
-- [ ] v0.4c: localized Vacancies UI, bounded CV ranking, saved and application conversion.
+- [x] v0.4c: localized Vacancies UI, bounded CV ranking, saved and application conversion.
 - [ ] v0.4d: content deduplication, admin stats, recovery/hardening and final verification.
 - v0.4b now processes new posts with `VacancyPipeline`; bot screens are next.
   Existing user/profile/CV/application tables are preserved. No Telegram login was
@@ -15,9 +15,12 @@
   hashing, duplicate links, image preprocessing and injected OCR success/failure.
   EasyOCR is optional in requirements-ocr.txt; `--prepare-ocr` downloads local models.
   Actual EasyOCR weights/accuracy and Telegram login are not exercised by unit tests.
-- Exact next step: implement `vacancy_ui.py` using shared localization and
-  `VacancyStore`; extend application conversion and privacy deletion of saved links.
-  Then add admin stats, retained-media expiry, reprocessing and final hardening.
+- v0.4c: 109 tests passed, including RU/EN cards, bounded lazy ranking, saved isolation,
+  privacy cleanup, combined filters and review/edit/cancel application conversion.
+  `vacancy_ui.py` shares ProductUI reports/forms. `db.py` adds application source_url
+  and deletes private saved links on erasure; public vacancies remain.
+- Exact next step: admin stats, retained-media expiry, reprocessing of old pending/
+  failed rows, additional hardening tests and final documentation/checks.
 
 ## Current checkpoint — RU/EN localization (2026-09-11)
 

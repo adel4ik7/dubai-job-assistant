@@ -62,6 +62,8 @@ class ProductUI:
         choices = STATUSES if field == 'status' else ENGLISH_LEVELS if field == 'english_level' else ()
         if choices:
             rows = [[(value_label(self.language(update), field, choice), f"p:choice:{form['nonce']}:{index}")] for index, choice in enumerate(choices)]
+        if field in form['values'] and form['values'][field]:
+            rows.insert(0, [(tr('v_keep_value', value=value_label(self.language(update), field, form['values'][field])[:70]), f"p:keep:{form['nonce']}")])
         if field not in {'company', 'role', 'full_name', 'status'}:
             rows.append([(tr('skip_clear'), f"p:skip:{form['nonce']}")])
         rows.append([(tr('cancel'), 'p:home')])
@@ -187,7 +189,7 @@ class ProductUI:
             context.user_data.pop('delete_confirmation', None)
         if action not in {'deletecv', 'erasecv'}:
             context.user_data.pop('cv_delete', None)
-        if action not in {'skip', 'choice'}:
+        if action not in {'skip', 'choice', 'keep'}:
             context.user_data.pop('form', None)
         try:
             if action == 'language':
@@ -204,14 +206,14 @@ class ProductUI:
                 return await self.begin_form(update, context, 'profile', PROFILE_FIELDS)
             elif action == 'edit' and parts[2] in PROFILE_FIELDS:
                 return await self.begin_form(update, context, 'profile', [parts[2]])
-            elif action in {'skip', 'choice'}:
+            elif action in {'skip', 'choice', 'keep'}:
                 form = context.user_data.get('form')
                 if not form or parts[2] != form['nonce']:
                     await self.reply(update, tr('this_button_expired_use_the_latest_form'))
                     return WAIT_FORM if form else END
                 field = form['fields'][form['index']]
                 choices = STATUSES if field == 'status' else ENGLISH_LEVELS if field == 'english_level' else ()
-                value = '-' if action == 'skip' else choices[int(parts[3])]
+                value = form['values'][field] if action == 'keep' else '-' if action == 'skip' else choices[int(parts[3])]
                 return await self.form_received(update, context, value)
             elif action in {'cvs', 'comparepage'}:
                 await self.cvs(update, context, max(0, int(parts[2])), action == 'comparepage')
@@ -258,6 +260,8 @@ class ProductUI:
                 app = self.db.get_application(user_id, int(parts[2]))
                 if app:
                     text = tr('application_v0', v0=app['id']) + '\n'.join((f"{label}: {value_label(self.language(update), key, app[key]) or tr('not_specified')}" for key, label in field_labels(self.language(update), APP_LABELS).items()))
+                    if app.get('source_url'):
+                        text += '\n' + tr('field_source_url') + ': ' + app['source_url']
                     await self.reply(update, text, keyboard([[(tr('change_status'), f"p:status:{app['id']}")], [(tr('back'), 'p:apps:0')]]))
                 else:
                     await self.reply(update, tr('application_not_found'))

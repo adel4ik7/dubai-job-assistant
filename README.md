@@ -66,6 +66,27 @@ Do not use OCR-derived contact or salary details without checking the original p
 The automated image fixture tests exercise preprocessing and the pipeline with an
 injected engine, without model downloads; actual OCR accuracy requires local setup.
 
+### Vacancies in the bot (RU/EN)
+
+Open **🔎 Vacancies / 🔎 Вакансии** for Latest, Best matches, Search, Filters and
+Saved. Cards omit unknown fields and link to the original public post. Inspect it
+before trusting extracted details. Search covers role, company and combined text;
+filters combine location substring, minimum stated salary in AED, source and last
+1–365 days. Unknown currencies/salaries do not pass salary filters. Saved listings
+are personal; `/delete_my_data` removes those links but retains public source posts.
+
+Analysis uses the active CV and the existing heuristic report. Best matches runs
+only on request, over the latest `VACANCY_MATCH_WINDOW` selected posts (default/max
+100); it excludes unknown scores and ranks that snapshot. Nothing continuously
+scores the full database. Long posts use the first 12,000 characters for matching.
+
+**Add to applications** opens the existing review form with extracted company,
+role, source, salary and original post URL. Keep or replace each known value and
+fill missing required fields. Status starts as Saved and applied date is blank:
+reading a vacancy is not evidence of an application. Enter the actual date/status
+if you have applied. The record is inserted only when the entire form is complete;
+/cancel discards the draft. No automatic external application or message is sent.
+
 A local Telegram assistant for early testers. It helps users organize CVs, compare
 vacancies and track applications. **v0.3 makes no OpenAI calls and uses no paid
 services**, even if an old `.env` contains an OpenAI key. AI provider code remains

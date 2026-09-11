@@ -5,6 +5,7 @@ from typing import Any
 from datetime import date
 
 from statuses import STATUSES, LEGACY_STATUSES, normalize_status
+from vacancy_store import SCHEMA as VACANCY_SCHEMA
 PROFILE_FIELDS = ("full_name", "desired_role", "desired_salary", "current_location",
                   "visa_status", "years_experience", "english_level", "notes")
 
@@ -85,6 +86,7 @@ class Database:
     def _init(self) -> None:
         with self._connect() as conn:
             conn.executescript(SCHEMA)
+            conn.executescript(VACANCY_SCHEMA)
             user_columns = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
             if "language" not in user_columns:
                 conn.execute("ALTER TABLE users ADD COLUMN language TEXT DEFAULT NULL")
@@ -92,7 +94,7 @@ class Database:
                 conn.execute("UPDATE applications SET status=? WHERE status=?", (code, legacy))
 
             columns = {r["name"] for r in conn.execute("PRAGMA table_info(applications)")}
-            for name in ("source", "salary", "date_applied", "vacancy_text"):
+            for name in ("source", "salary", "date_applied", "vacancy_text", "source_url"):
                 if name not in columns:
                     conn.execute(f"ALTER TABLE applications ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
                     if name == "date_applied":
@@ -140,7 +142,7 @@ class Database:
 
     def add_application(self, telegram_id: int, company: str, role: str, notes: str = "", *,
                         status: str = "applied", source: str = "", salary: str = "",
-                        date_applied: str | None = None, vacancy_text: str = "") -> int:
+                        date_applied: str | None = None, vacancy_text: str = "", source_url: str = "") -> int:
         status = normalize_status(status)
         if status not in STATUSES:
             raise ValueError("Choose a listed application status.")
@@ -154,10 +156,10 @@ class Database:
         with self._connect() as conn:
             cur = conn.execute(
                 """
-                INSERT INTO applications(telegram_id, company, role, notes, status, source, salary, date_applied, vacancy_text)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO applications(telegram_id, company, role, notes, status, source, salary, date_applied, vacancy_text, source_url)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (telegram_id, company.strip(), role.strip(), notes, status, source, salary, date_applied, vacancy_text),
+                (telegram_id, company.strip(), role.strip(), notes, status, source, salary, date_applied, vacancy_text, source_url),
             )
             return int(cur.lastrowid)
 
@@ -277,6 +279,7 @@ class Database:
 
     def delete_user_records(self, telegram_id: int) -> None:
         with self._connect() as conn:
+            conn.execute('DELETE FROM user_saved_vacancies WHERE user_id=?', (telegram_id,))
             for table in ("profiles", "active_resumes", "resumes", "applications", "ai_usage", "users"):
                 conn.execute(f"DELETE FROM {table} WHERE telegram_id=?", (telegram_id,))
 

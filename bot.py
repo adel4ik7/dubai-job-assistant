@@ -9,6 +9,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from config import Settings, load_settings
 from db import Database, STATUSES
 from product_ui import ProductUI, WAIT_FORM, WAIT_SEARCH
+from vacancy_ui import VacancyUI, WAIT_VACANCY_INPUT
 from services.ai import AIError, AIService, OpenAIProvider, TASKS, message_chunks
 from services.matcher import analyse_match, format_analysis
 from services.resume_parser import ResumeParseError, extract_text
@@ -20,6 +21,7 @@ settings: Settings
 db: Database
 ai: AIService
 product: ProductUI
+vacancies: VacancyUI
 WAIT_VACANCY = 1
 WAIT_APPLICATION = 2
 WAIT_AI_VACANCY = 3
@@ -27,6 +29,7 @@ def make_main_menu(language='en'):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(locale_text(language, 'menu_profile'), callback_data='p:profile'), InlineKeyboardButton(locale_text(language, 'menu_cvs'), callback_data='p:cvs:0')],
         [InlineKeyboardButton(locale_text(language, 'menu_analyse'), callback_data='analyse_vacancy')],
+        [InlineKeyboardButton(locale_text(language, 'v_menu'), callback_data='v:home')],
         [InlineKeyboardButton(locale_text(language, 'menu_applications'), callback_data='p:apps:0'), InlineKeyboardButton(locale_text(language, 'menu_dashboard'), callback_data='p:dashboard')],
         [InlineKeyboardButton(locale_text(language, 'menu_help'), callback_data='help'), InlineKeyboardButton(locale_text(language, 'language_button'), callback_data='p:language')]])
 
@@ -71,6 +74,9 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await query.message.reply_text(tr('please_use_a_private_chat_with_the_bot'))
         return ConversationHandler.END
     await ensure_user(update)
+    if query.data.startswith('v:'):
+        reset_pending(context)
+        return await vacancies.buttons(update, context)
     handled = await product.buttons(update, context)
     if handled is not None:
         return handled
@@ -236,7 +242,7 @@ async def ai_vacancy_received(update: Update, context: ContextTypes.DEFAULT_TYPE
     return await run_ai(update, context, action, vacancy)
 
 def reset_pending(context) -> None:
-    for key in ('form', 'delete_confirmation', 'cv_delete', 'ai_action'):
+    for key in ('form', 'delete_confirmation', 'cv_delete', 'ai_action', 'vacancy_input'):
         context.user_data.pop(key, None)
 
 def cleanup_failed_upload(path: Path) -> None:
@@ -251,11 +257,12 @@ async def cv_received(update, context):
     return ConversationHandler.END
 
 def build_application(config: Settings | None=None) -> Application:
-    global settings, db, ai, product
+    global settings, db, ai, product, vacancies
     settings = config or load_settings()
     db = Database(settings.database_path)
     ai = AIService(None, db, settings.ai_daily_limit)
     product = ProductUI(db, settings.uploads_dir, make_main_menu)
+    vacancies = VacancyUI(product, settings.vacancy_match_window, settings.admin_telegram_id)
     app = Application.builder().token(settings.telegram_bot_token).concurrent_updates(False).build()
     conversation = ConversationHandler(
         entry_points=[
@@ -268,6 +275,7 @@ def build_application(config: Settings | None=None) -> Application:
             MessageHandler(filters.Document.ALL & filters.ChatType.PRIVATE, cv_received),
         ],
         states={
+            WAIT_VACANCY_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, vacancies.input_received)],
             WAIT_FORM: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, product.form_received)],
             WAIT_SEARCH: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, product.search_received)],
             WAIT_AI_VACANCY: [MessageHandler(filters.TEXT & ~filters.COMMAND, ai_vacancy_received)],
