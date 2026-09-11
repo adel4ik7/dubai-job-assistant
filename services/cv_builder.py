@@ -15,11 +15,11 @@ BASIC = ('full_name', 'target_role', 'phone', 'email', 'current_location', 'nati
 EXPERIENCE = ('company', 'role', 'location', 'start_date', 'end_date', 'description')
 EDUCATION = ('institution', 'qualification', 'field', 'dates', 'location')
 SECTIONS = ('basics', 'summary', 'experience', 'education', 'skills', 'languages',
-            'certifications', 'links', 'photo')
+            'certifications', 'links', 'additional', 'references', 'photo')
 SECTION_FIELDS = {'basics': BASIC, 'summary': ('summary',), 'experience': EXPERIENCE,
                   'education': EDUCATION, 'skills': ('skills',), 'languages': ('languages',),
                   'certifications': ('certifications',), 'links': ('linkedin', 'website', 'telegram'),
-                  'photo': ('photo',)}
+                  'additional': ('additional',), 'references': ('references',), 'photo': ('photo',)}
 
 
 def validate_value(field, value):
@@ -76,7 +76,8 @@ class CVBuilder:
 
     def create(self, user_id):
         with self.db._connect() as conn:
-            return conn.execute('INSERT INTO cv_drafts(telegram_id) VALUES (?)', (user_id,)).lastrowid
+            return conn.execute('INSERT INTO cv_drafts(telegram_id,data_json) VALUES (?,?)',
+                                (user_id, json.dumps({'_language': self.db.get_language(user_id), '_template': 'template_3'}))).lastrowid
 
     def get(self, user_id, draft_id):
         with self.db._connect() as conn:
@@ -137,18 +138,30 @@ class CVBuilder:
             data.pop('_wizard')
         self.save(user_id, draft_id, data)
 
-    def duplicate(self, user_id, draft_id):
+    def duplicate(self, user_id, draft_id, language=None):
         data = copy.deepcopy(self.get(user_id, draft_id)['data'])
+        if language is not None:
+            if language not in {'ru', 'en'}:
+                raise ValueError('cb_invalid')
+            data['_language'] = language
+            data['_origin_id'] = data.get('_origin_id', draft_id)
         new_id = self.create(user_id)
         self.save(user_id, new_id, data)
         return new_id
+
+    def set_template(self, user_id, draft_id, template):
+        from services.cv_export import template_style
+        template_style(template)
+        data = self.get(user_id, draft_id)['data']
+        data['_template'] = template
+        self.save(user_id, draft_id, data)
 
     def attachment(self, user_id, draft_id, extension, language='en'):
         from services.cv_export import render
         data = self.get(user_id, draft_id)['data']
         if not data.get('full_name') or not data.get('target_role'):
             raise ValueError('cb_required')
-        content = render(data, extension, language)
+        content = render(data, extension, data.get('_language', language), data.get('_template', 'template_3'))
         return CVAttachment(filename(data['full_name'], extension),
                             'application/pdf' if extension == 'pdf' else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', content)
 
@@ -157,6 +170,7 @@ class CVBuilder:
         from services.product import UserFiles
         attachment = self.attachment(user_id, draft_id, 'docx', language)
         draft = self.get(user_id, draft_id)
+        language = draft['data'].get('_language', language)
         existing = self.db.get_resume(user_id, draft['resume_id']) if draft['resume_id'] else None
         self.root.mkdir(parents=True, exist_ok=True)
         path = self.root / f'{user_id}_{uuid4().hex}.docx'

@@ -315,6 +315,23 @@ Architecture: `services/cv_builder.py` owns drafts and provides `CVAttachment`
 sent. `services/cv_export.py` maps factual data into document blocks and renders them;
 `templates/` holds template settings separately from Telegram/business logic.
 
+Choose **Modern**, **Professional** or **Classic ATS** from the CV preview.
+Modern uses a shaded sidebar and two columns; Professional uses a narrow text
+sidebar and a wider experience column. Both support an optional square-cropped
+photo without stretching. Classic ATS uses one text column, no photos, no layout
+tables, no skill bars or decorative graphics. It is the default for new drafts.
+PDF exports retain selectable Unicode text and use automatic A4 pagination.
+DOCX exports retain editable styled text; the two-column versions use a fixed-width
+borderless layout table, while Classic ATS uses ordinary paragraphs only.
+PDF and Word page breaks may differ; templates are not guarantees of ATS acceptance.
+
+**Create RU version / Create EN version** makes an independent copy of the current
+draft with its own document language, template, edits and active-CV link. Headings
+use that document language even if the bot menu language changes. User-entered text
+is copied unchanged: translate your own content by editing sections. No translation
+service or invented content is involved. Optional additional information and
+references are also editable and omitted when empty.
+
 ### Uploaded CVs
 
 Upload PDF, DOCX or TXT files up to 5 MB. Each successful upload is a separate CV

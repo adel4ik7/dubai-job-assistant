@@ -17,7 +17,7 @@ class CVBuilderUITests(unittest.IsolatedAsyncioTestCase):
         self.root = Path(temp.name)
         self.config = Settings('123:' + 'x'*30, None, 'unused', self.root / 'test.db', self.root)
         bot.build_application(self.config)
-        self.message = SimpleNamespace(text='', photo=[], reply_text=AsyncMock(), reply_document=AsyncMock())
+        self.message = SimpleNamespace(text='', photo=[], reply_text=AsyncMock(), reply_document=AsyncMock(), reply_photo=AsyncMock())
         self.query = SimpleNamespace(data='', answer=AsyncMock(), message=self.message)
         self.update = SimpleNamespace(effective_user=SimpleNamespace(id=1, username='test', first_name='Test'),
             message=self.message, effective_message=self.message, callback_query=self.query, effective_chat=SimpleNamespace(type='private'))
@@ -89,7 +89,7 @@ class CVBuilderUITests(unittest.IsolatedAsyncioTestCase):
             for value in [f'College {i}', 'Diploma', 'Culinary arts', '2020–2022', 'Dubai']:
                 await self.answer(value)
         await self.click(f'cb:next:{did}:education')
-        for value in ['Cooking', 'English B2', '', '', '', '']:
+        for value in ['Cooking', 'English B2', '', '', '', '', '', '']:
             await self.answer(value)
         data = bot.builder_ui.builder.get(1, did)['data']
         self.assertEqual(data['_wizard']['section'], 'photo')
@@ -99,3 +99,20 @@ class CVBuilderUITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(data['education']), 2)
         await self.click(f'cb:active:{did}')
         self.assertIn('Cooking', bot.db.active_resume(1)['extracted_text'])
+
+    async def test_template_and_separate_language_versions(self):
+        await self.click('cb:new')
+        did = self.context.user_data['builder_form']
+        await self.answer('Original Name')
+        await self.click(f'cb:templates:{did}')
+        await self.click(f'cb:template:{did}:template_1')
+        await self.click(f'cb:version:{did}:ru')
+        clone = bot.builder_ui.builder.list(1)[0]
+        self.assertNotEqual(clone['id'], did)
+        self.assertEqual(clone['data']['_language'], 'ru')
+        self.assertEqual(clone['data']['full_name'], 'Original Name')
+        bot.builder_ui.builder.set_section(1, clone['id'], 'basics', {'full_name': 'Новое имя', 'target_role': 'Аналитик'})
+        self.assertEqual(bot.builder_ui.builder.get(1, did)['data']['full_name'], 'Original Name')
+        bot.db.set_language(1, 'en')
+        await self.click(f"cb:view:{clone['id']}")
+        self.assertIn('RU · Modern', self.message.reply_text.call_args.args[0])

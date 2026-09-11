@@ -1,5 +1,23 @@
 # Dubai Job Assistant — TODO
 
+## CV templates and language versions — 2026-09-12
+- Audit: main branch, GitHub origin verified; four configured sources enabled.
+  Existing offline search/matcher/OCR and private user records preserved.
+- Three selectable local templates: Modern and Professional with independent
+  PDF columns and editable DOCX columns; Classic ATS with a single plain-text
+  column, no photo/layout tables. A4, Unicode font embedding, automatic wrapping.
+- Persisted independent RU/EN CV copies; no automatic translation of user facts.
+- Empty headings omitted; photo cropped without stretching; optional references
+  and additional-information fields. Active CV keeps a deliberate saved snapshot.
+- Visual QA: all three PDF and Word-rendered DOCX layouts inspected with Cyrillic,
+  long email/LinkedIn and 1–3 pages; tightened metadata paragraph page-break rules.
+- Final validation: 163 tests passed with real local OCR; compileall, pip check
+  and diff check passed. Static previews use synthetic data only. No private files
+  are tracked by Git. Commit: `Complete three CV templates and independent RU EN versions`.
+- Next priority after stable CV Builder commit: Apply preparation in vacancy UI,
+  editable subject/message, selected CV and extracted email, Confirm saves only.
+  Alerts remain lower priority; do not send email or notifications automatically.
+
 ## CV Builder foundation — 2026-09-11
 - Persistent owner-scoped structured drafts, resumable per-answer wizard, section
   editing, repeated experience/education, photo handling, clone and confirmed delete.

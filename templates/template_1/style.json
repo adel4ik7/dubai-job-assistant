@@ -1,1 +1,1 @@
-{"enabled": true, "font_size": 10.5, "margin_mm": 18, "heading_size": 13}
+{"name": "Modern", "layout": "modern", "font_size": 10, "margin_mm": 18, "heading_size": 12, "sidebar_mm": 66, "gap_mm": 8, "accent": "#234C5C", "sidebar_background": "#EEF3F5"}

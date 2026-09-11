@@ -1,1 +1,1 @@
-{"enabled": false}
+{"name": "Professional", "layout": "professional", "font_size": 10, "margin_mm": 18, "heading_size": 12, "sidebar_mm": 54, "gap_mm": 8, "accent": "#222222", "sidebar_background": "#FFFFFF"}

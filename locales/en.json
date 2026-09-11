@@ -320,5 +320,14 @@
   "cb_dates": "Dates",
   "cb_linkedin": "LinkedIn",
   "cb_website": "Portfolio / website",
-  "cb_telegram": "Telegram (optional)"
+  "cb_telegram": "Telegram (optional)",
+  "cb_contact": "Contact information",
+  "cb_additional": "Additional information",
+  "cb_references": "References (optional)",
+  "cb_templates": "Choose template",
+  "cb_copy_ru": "Create RU version",
+  "cb_copy_en": "Create EN version",
+  "cb_document_options": "Document: {document_language} · {template}",
+  "cb_translation_notice": "An independent language version was created. Headings use the selected language; your text is copied unchanged. Edit the sections with your own translation.",
+  "cb_template_hint": "Choose a template. Modern and Professional use two columns. Classic ATS uses a single text column and omits photos for simpler parsing. No layout guarantees acceptance by every ATS."
 }

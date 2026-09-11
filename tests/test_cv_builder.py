@@ -28,7 +28,7 @@ class CVBuilderTests(unittest.TestCase):
         self.builder.set_section(1, self.did, 'basics', {'full_name': 'Анна Example', 'target_role': 'Data Analyst'})
 
     def test_draft_persistence_and_owner_isolation(self):
-        self.assertEqual(self.builder.get(1, self.did)['data'], {})
+        self.assertEqual(self.builder.get(1, self.did)['data']['_template'], 'template_3')
         self.complete_basics()
         builder = CVBuilder(Database(self.db.path), self.builder.root)
         self.assertEqual(builder.get(1, self.did)['data']['full_name'], 'Анна Example')
@@ -54,9 +54,10 @@ class CVBuilderTests(unittest.TestCase):
         self.complete_basics()
         self.builder.set_section(1, self.did, 'skills', {'skills': 'SQL, Python'})
         for language, heading in [('ru', 'Навыки'), ('en', 'Skills')]:
-            docx = self.builder.attachment(1, self.did, 'docx', language)
+            version = self.builder.duplicate(1, self.did, language)
+            docx = self.builder.attachment(1, version, 'docx', language)
             text = '\n'.join(p.text for p in Document(io.BytesIO(docx.content)).paragraphs)
-            pdf = self.builder.attachment(1, self.did, 'pdf', language)
+            pdf = self.builder.attachment(1, version, 'pdf', language)
             pdf_text = '\n'.join(page.extract_text() for page in PdfReader(io.BytesIO(pdf.content)).pages)
             for result in (text, pdf_text):
                 self.assertIn('Анна Example', result)
@@ -101,6 +102,7 @@ class CVBuilderTests(unittest.TestCase):
         photo = io.BytesIO()
         Image.new('RGB', (50, 80), 'blue').save(photo, 'PNG')
         self.builder.set_section(1, self.did, 'photo', photo.getvalue())
+        self.builder.set_template(1, self.did, 'template_1')
         self.assertTrue(self.builder.get(1, self.did)['data']['photo'])
         self.assertEqual(len(Document(io.BytesIO(self.builder.attachment(1, self.did, 'docx').content)).inline_shapes), 1)
         self.assertTrue(self.builder.attachment(1, self.did, 'pdf').content.startswith(b'%PDF'))
@@ -116,8 +118,7 @@ class CVBuilderTests(unittest.TestCase):
             self.builder.set_section(1, self.did, 'basics', {'email': 'invalid'})
         with self.assertRaises(ValueError):
             self.builder.set_section(1, self.did, 'experience', {'start_date': '2025-12', 'end_date': '2024'})
-        with self.assertRaises(ValueError):
-            render({}, 'pdf', template='template_2')
+        self.assertTrue(render({}, 'pdf', template='template_2').startswith(b'%PDF'))
         with self.assertRaises(ValueError):
             render({}, 'pdf', template='../secret')
         self.assertEqual(plain_text({}), '')

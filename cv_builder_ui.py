@@ -9,6 +9,7 @@ from locales import translator
 from product_ui import keyboard
 from services.cv_builder import CVBuilder, SECTIONS, SECTION_FIELDS, validate_value
 from services.cv_export import plain_text
+from services.cv_export import TEMPLATE_IDS, TEMPLATES, template_style
 
 WAIT_CV_BUILDER = 40
 END = ConversationHandler.END
@@ -28,7 +29,7 @@ class CVBuilderUI:
         rows = self.builder.list(update.effective_user.id, page)
         buttons = [[(tr('cb_new'), 'cb:new')]]
         for row in rows[:5]:
-            buttons.append([(f"#{row['id']} {row['data'].get('full_name') or tr('cb_draft')}", f"cb:view:{row['id']}")])
+            buttons.append([(f"#{row['id']} [{row['data'].get('_language', 'en').upper()}] {row['data'].get('full_name') or tr('cb_draft')}", f"cb:view:{row['id']}")])
         if page:
             buttons.append([(tr('previous'), f'cb:home:{page-1}')])
         if len(rows) > 5:
@@ -44,10 +45,14 @@ class CVBuilderUI:
         context.user_data.pop('builder_delete', None)
         buttons = [[(tr('cb_continue'), f'cb:resume:{draft_id}')]] if data.get('_wizard') or data.get('_next_section') else []
         buttons += [[(tr('cb_pdf'), f'cb:pdf:{draft_id}'), (tr('cb_docx'), f'cb:docx:{draft_id}')],
+                    [(tr('cb_templates'), f'cb:templates:{draft_id}')],
+                    [(tr('cb_copy_ru'), f'cb:version:{draft_id}:ru'), (tr('cb_copy_en'), f'cb:version:{draft_id}:en')],
                     [(tr('cb_active'), f'cb:active:{draft_id}')],
                     [(tr('cb_edit'), f'cb:sections:{draft_id}'), (tr('cb_duplicate'), f'cb:duplicate:{draft_id}')],
                     [(tr('cb_delete'), f'cb:delete:{draft_id}')], [(tr('cb_menu'), 'cb:home')]]
-        preview = plain_text(data, self.product.language(update)) or tr('cb_empty')
+        language = data.get('_language', self.product.language(update))
+        preview = plain_text(data, language) or tr('cb_empty')
+        preview = tr('cb_document_options', document_language=language.upper(), template=template_style(data.get('_template', 'template_3'))['name']) + '\n\n' + preview
         if data.get('photo'):
             preview += '\n' + tr('cb_photo_saved')
         await self.product.reply(update, tr('cb_preview', id=draft_id) + '\n\n' + preview + '\n\n' + tr('cb_snapshot'), keyboard(buttons))
@@ -238,6 +243,22 @@ class CVBuilderUI:
                 return await self.home(update, context)
             if action == 'duplicate':
                 return await self.view(update, context, self.builder.duplicate(uid, draft_id))
+            if action == 'version':
+                new_id = self.builder.duplicate(uid, draft_id, parts[3])
+                await self.product.reply(update, tr('cb_translation_notice'))
+                return await self.view(update, context, new_id)
+            if action == 'templates':
+                for template in TEMPLATE_IDS:
+                    preview = TEMPLATES / template / 'preview.png'
+                    if preview.is_file():
+                        with preview.open('rb') as image:
+                            await update.effective_message.reply_photo(photo=image, caption=template_style(template)['name'])
+                await self.product.reply(update, tr('cb_template_hint'), keyboard(
+                    [[(template_style(t)['name'], f'cb:template:{draft_id}:{t}')] for t in TEMPLATE_IDS]))
+                return END
+            if action == 'template':
+                self.builder.set_template(uid, draft_id, parts[3])
+                return await self.view(update, context, draft_id)
             if action in {'pdf', 'docx'}:
                 attachment = await asyncio.to_thread(self.builder.attachment, uid, draft_id, action, self.product.language(update))
                 await update.effective_message.reply_document(document=io.BytesIO(attachment.content), filename=attachment.filename)
