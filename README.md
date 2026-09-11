@@ -1,5 +1,44 @@
 # Dubai Job Assistant — v0.3
 
+## v0.4 collector (separate process)
+
+Obtain your own API ID / hash at https://my.telegram.org under **API development
+tools**, following https://core.telegram.org/api/obtaining_api_id. Add them to the
+existing `.env` as `TELEGRAM_API_ID` and `TELEGRAM_API_HASH`; optionally set
+`TELEGRAM_PHONE`. Never commit or share credentials. Session name defaults to
+`dubai_job_collector`; session files live in the gitignored `sessions/` directory.
+They grant account access and must be protected like credentials.
+
+Install updated `requirements.txt`, then use separate terminals:
+
+```powershell
+# Terminal 1
+python bot.py
+# Terminal 2
+python collector.py
+# Explicit, bounded test history import, then exit:
+python collector.py --backfill 50
+```
+
+Use `.\.venv\Scripts\python.exe` instead of `python` if needed. The first collector
+login prompts privately for a missing phone, verification code and optional 2FA
+password. Authentication remains local; no credentials are requested through the bot.
+Stop with Ctrl+C. The collector disconnects gracefully. Run one collector per session.
+
+`sources.json` seeds `jobs_in_dubai` once. Sources and cursors then persist in SQLite.
+Source-management commands need no login: `python collector.py --list-sources`,
+`--add-source CHANNEL_USERNAME`, `--disable-source ID`, `--enable-source ID`.
+Only explicitly configured public broadcast channels are read; private chats/groups
+are refused. It never joins channels, sends messages or applies for jobs.
+On an uninitialized source the normal run establishes a current-post baseline,
+without downloading history. Backfill accepts 1–500 latest posts per enabled source.
+Later runs process up to 100 new posts per source per poll, sequentially; the default
+poll is 300 seconds (minimum 60). FloodWait pauses for Telegram's requested duration.
+Do not use the account for spam or to bypass Telegram limits.
+
+v0.4a checkpoint: raw posts are stored as pending; OCR, detection and bot vacancy
+screens are the next stages. Existing v0.3 bot functionality remains available.
+
 A local Telegram assistant for early testers. It helps users organize CVs, compare
 vacancies and track applications. **v0.3 makes no OpenAI calls and uses no paid
 services**, even if an old `.env` contains an OpenAI key. AI provider code remains

@@ -1,5 +1,20 @@
 # Dubai Job Assistant — TODO
 
+## v0.4 — Telegram Vacancy Collector
+- [x] v0.4a: separate Telethon process, local source configuration/SQLite tables,
+  safe first-run baseline, bounded backfill, source controls and checkpointing.
+- [ ] v0.4b: local OCR, preprocessing, vacancy detection, conservative field parser.
+- [ ] v0.4c: localized Vacancies UI, bounded CV ranking, saved and application conversion.
+- [ ] v0.4d: content deduplication, admin stats, recovery/hardening and final verification.
+- v0.4a stores posts as `pending`; it does not yet surface them to bot users.
+  Existing user/profile/CV/application tables are preserved. No Telegram login was
+  performed. Source seed is `sources.json`; SQLite becomes authoritative after seeding.
+- v0.4a verification: 93 local tests, compileall and dependency check. Telethon installed
+  locally; tests use a fake transport and never require Telegram credentials.
+- Exact next step: implement `services/vacancy_detector.py`, `vacancy_parser.py`,
+  `ocr.py` and inject their pipeline into `Collector.processor` in `collector.py`.
+  Then implement `vacancy_ui.py` using shared localization and `VacancyStore`.
+
 ## Current checkpoint — RU/EN localization (2026-09-11)
 
 - [x] Persistent `users.language` settings (`en`/`ru`), English fallback for old users.

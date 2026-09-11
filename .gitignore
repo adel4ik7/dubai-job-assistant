@@ -6,3 +6,8 @@ data/
 uploads/
 .idea/
 .vscode/
+sessions/
+*.session
+*.session-*
+collector_media/
+ocr_models/
