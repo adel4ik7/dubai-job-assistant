@@ -1,5 +1,17 @@
 # Dubai Job Assistant — TODO
 
+## Windows Unicode OCR fix — 2026-09-11
+- Preserved owner's manual Pillow -> EXIF transpose -> RGB -> NumPy -> readtext fix.
+  No string filename crosses the EasyOCR/OpenCV boundary. NumPy import is lazy so
+  bot startup remains compatible without the optional OCR installation.
+- Added Cyrillic Windows-like directory regression checking RGB array/dtype and
+  closed file handle; real OCR integration now also uses a Cyrillic media directory.
+- Owner reported live validation on jobs_in_dubai/33267 (382 OCR chars, score 60,
+  probably_vacancy, vacancy 52). This live result was not independently replayed.
+- Verification passed: 129 tests including real local OCR and compileall.
+- Next: commit this fix separately, then improve existing reprocess-backfill
+  logs and multi-source CLI management. No manual code changes discarded.
+
 ## Bounded reprocess-backfill — 2026-09-11
 - [x] `collector.py --reprocess-backfill SOURCE N` reprocesses a single latest-post
   snapshot of 1–500 messages from one configured enabled public broadcast channel.

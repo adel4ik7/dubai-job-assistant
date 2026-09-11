@@ -115,6 +115,13 @@ already collected messages. It cannot be combined with `--backfill`.
 
 #### Diagnosing image-only posts
 
+Windows Unicode fix: Pillow opens the image, applies EXIF orientation, converts to
+RGB, and passes a NumPy array to EasyOCR. Passing `C:\Users\Адель\...` as a string
+can fail inside OpenCV's filename decoding even when the file exists. The array
+boundary avoids that decoding path. NumPy is part of the optional OCR installation;
+ordinary bot startup does not import it. A Cyrillic-directory regression and the
+real OCR pipeline test cover this boundary.
+
 The photo-path bug in v0.4 is fixed: Telethon can change the requested temporary
 stem `original` to `original.jpg` (or an image-document extension). The pipeline now
 uses the actual returned filename, validates that it is inside the temporary folder,

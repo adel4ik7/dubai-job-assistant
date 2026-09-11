@@ -48,7 +48,7 @@ class RealOCRTests(unittest.TestCase):
                     db = Database(Path(root) / 'test.db')
                     store = VacancyStore(db)
                     store.add_source('test_jobs')
-                    settings = SimpleNamespace(ocr_enabled=True, keep_media=False, media_dir=Path(root) / 'media')
+                    settings = SimpleNamespace(ocr_enabled=True, keep_media=False, media_dir=Path(root) / 'Фото_Адель')
                     with patch.object(client, 'connect', side_effect=AssertionError('No Telegram network')):
                         row = await Collector(client, store, VacancyPipeline(settings, engine)).process_message(store.sources()[0], message)
                     self.assertEqual(row['ocr_status'], 'processed')
