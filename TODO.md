@@ -1,5 +1,21 @@
 # Dubai Job Assistant — TODO
 
+## RU/EN profession search — 2026-09-11
+- Added isolated offline dictionary in services/vacancy_search.py with all requested
+  profession groups, symmetric RU/EN expansion, punctuation/hyphen/space normalization
+  and CDP / chef de partie aliases. Specific whole-query groups do not recursively
+  expand into unrelated broader professions. Unknown queries keep substring search.
+- VacancyStore.list searches role/company/raw_text/ocr_text/combined_text/location
+  with bound SQL parameters before existing filters and pagination. No schema,
+  dependency, UI-language or scoring changes; no APIs or paid services.
+- Added eight tests covering required synonyms, each text column, company/location,
+  all dictionary groups, normalization, filters, pagination and saved-user isolation.
+- Verification: all 146 tests passed, including real local OCR; full compileall,
+  dependency and diff checks passed. Implementation complete; commit title:
+  `Add offline RU EN profession synonyms to vacancy search` (target origin/main).
+- Next operational check: after restarting the bot, search for повар and chef in
+  either UI language and use Next with existing filters. No live user data changed.
+
 ## Multi-source management completed — 2026-09-11
 - Added username/@username/public t.me link normalization, case-insensitive unique
   sources, RU/EN display titles, and CLI add/list/enable/disable/remove operations.

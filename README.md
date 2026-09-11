@@ -92,7 +92,13 @@ a smoke test, not a guarantee of quality on complex posters or small/blurred tex
 
 Open **🔎 Vacancies / 🔎 Вакансии** for Latest, Best matches, Search, Filters and
 Saved. Cards omit unknown fields and link to the original public post. Inspect it
-before trusting extracted details. Search covers role, company and combined text;
+before trusting extracted details. Search covers role, company, raw text, OCR text,
+combined text and location. A small offline RU/EN profession dictionary expands
+whole queries: `повар` finds cook/chef/commis/CDP and `chef` also finds `повар`.
+Case, punctuation, hyphen variants and extra whitespace are normalized. Specific
+queries such as `повар холодного цеха` retain their own synonym group. Unknown
+queries still use ordinary substring search; this is not automatic translation
+or fuzzy OCR correction. The vocabulary lives in `services/vacancy_search.py`;
 filters combine location substring, minimum stated salary in AED, source and last
 1–365 days. Unknown currencies/salaries do not pass salary filters. Saved listings
 are personal; `/delete_my_data` removes those links but retains public source posts.

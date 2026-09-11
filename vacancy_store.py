@@ -3,6 +3,7 @@ import json
 import re
 from pathlib import Path
 from urllib.parse import urlsplit
+from services.vacancy_search import normalize_search, search_terms
 
 
 SCHEMA = '''
@@ -186,8 +187,12 @@ class VacancyStore:
             clauses.append('(s.enabled=1 OR EXISTS(SELECT 1 FROM vacancies d JOIN vacancy_sources ds ON ds.id=d.source_id WHERE d.duplicate_of=v.id AND ds.enabled=1))')
         values = []
         if search:
-            clauses.append("(instr(casefold(v.role),casefold(?))>0 OR instr(casefold(v.company),casefold(?))>0 OR instr(casefold(v.combined_text),casefold(?))>0)")
-            values.extend([search] * 3)
+            fields = ('role', 'company', 'raw_text', 'ocr_text', 'combined_text', 'location')
+            terms = search_terms(search)
+            clauses.append('(' + ' OR '.join(
+                f'instr(search_normalize(v.{field}),?)>0' for field in fields for term in terms
+            ) + ')' if terms else '0')
+            values.extend(term for field in fields for term in terms)
         if location:
             clauses.append('instr(casefold(v.location),casefold(?))>0')
             values.append(location)
@@ -204,6 +209,7 @@ class VacancyStore:
             clauses.append('EXISTS(SELECT 1 FROM user_saved_vacancies u JOIN vacancies saved ON saved.id=u.vacancy_id WHERE (saved.id=v.id OR saved.duplicate_of=v.id) AND u.user_id=?)')
             values.append(saved_user)
         with self.db._connect() as conn:
+            conn.create_function('search_normalize', 1, normalize_search, deterministic=True)
             return [dict(r) for r in conn.execute(
                 'SELECT v.*,s.title AS source_title FROM vacancies v JOIN vacancy_sources s ON s.id=v.source_id WHERE ' +
                 ' AND '.join(clauses) + ' ORDER BY v.published_at DESC,v.id DESC LIMIT ? OFFSET ?',
