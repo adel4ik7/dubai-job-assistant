@@ -210,6 +210,9 @@ async def run(args):
                 reason = 'dependency_missing' if isinstance(exc, ImportError) else 'model_missing' if isinstance(exc, FileNotFoundError) else 'native_library_or_model_access' if isinstance(exc, OSError) else 'engine_initialization_failed'
                 log.warning('OCR unavailable; reason=%s. Check requirements-ocr.txt and --prepare-ocr.', reason)
         collector = Collector(client, store, VacancyPipeline(settings, engine, diagnostics), diagnostics=diagnostics)
+        if args.reprocess_backfill:
+            await reprocess_backfill(collector, *args.reprocess_backfill)
+            return
         if args.reprocess_message:
             await reprocess_message(collector, *args.reprocess_message)
             return
@@ -248,6 +251,46 @@ async def retry_ocr(collector, limit):
                 log.warning('OCR retry failed; vacancy_id=%s', row['id'])
                 break
         await collector.sleep(1)
+
+
+async def reprocess_backfill(collector, username, limit):
+    """One bounded snapshot; reuse force-update/hash dedup without moving cursors."""
+    limit = bounded_backfill(limit)
+    source = next((s for s in collector.store.sources(True)
+                   if s['telegram_username'].casefold() == username.removeprefix('@').casefold()), None)
+    if not source:
+        log.warning('Backfill retry refused: source must be configured and enabled.')
+        return
+    while True:
+        try:
+            entity = await collector.client.get_entity(source['telegram_username'])
+            names = [getattr(entity, 'username', None)] + [u.username for u in (getattr(entity, 'usernames', None) or []) if u.active]
+            if not isinstance(entity, types.Channel) or not entity.broadcast or source['telegram_username'].casefold() not in [n.casefold() for n in names if n]:
+                log.warning('Backfill retry refused: source is not a public broadcast channel; source_id=%s', source['id'])
+                return
+            messages = await collector.client.get_messages(entity, limit=limit, wait_time=1)
+            break
+        except errors.FloodWaitError as exc:
+            log.warning('Telegram requested a wait; seconds=%s', exc.seconds)
+            await collector.sleep(exc.seconds)
+    seen = set()
+    for message in reversed(messages[:limit]):
+        message_id = getattr(message, 'id', None)
+        if not isinstance(message_id, int) or message_id <= 0 or isinstance(message, types.MessageEmpty) or message_id in seen:
+            continue
+        seen.add(message_id)
+        while True:
+            try:
+                await collector.process_message(source, message, force=True)
+                break
+            except errors.FloodWaitError as exc:
+                log.warning('Telegram requested a wait; seconds=%s', exc.seconds)
+                await collector.sleep(exc.seconds)
+            except Exception:
+                log.warning('Backfill message retry failed; source_id=%s message_id=%s', source['id'], message_id)
+                break
+        await collector.sleep(1)
+    log.info('Backfill retry finished; source_id=%s messages_attempted=%s', source['id'], len(seen))
 
 
 async def reprocess_message(collector, username, message_id):
@@ -290,11 +333,22 @@ def main():
     group.add_argument('--reprocess', type=bounded_backfill, metavar='N', help='Reprocess up to N pending/failed stored texts offline.')
     group.add_argument('--retry-ocr', type=bounded_backfill, metavar='N', help='Retry up to N failed/disabled images from Telegram.')
     group.add_argument('--reprocess-message', nargs=2, metavar=('SOURCE', 'MESSAGE_ID'), help='Read and reprocess exactly one configured public-channel post, without advancing its cursor.')
+    group.add_argument('--reprocess-backfill', nargs=2, metavar=('SOURCE', 'N'), help='Reprocess latest 1-500 posts of one configured source, updating existing rows without advancing its cursor.')
     group.add_argument('--add-source', metavar='USERNAME')
     group.add_argument('--list-sources', action='store_true')
     group.add_argument('--disable-source', type=int, metavar='ID')
     group.add_argument('--enable-source', type=int, metavar='ID')
     args = parser.parse_args()
+    if args.reprocess_backfill:
+        username, number = args.reprocess_backfill
+        if args.backfill is not None:
+            parser.error('Use either --backfill or --reprocess-backfill, not both.')
+        if not re.fullmatch(r'@?[a-zA-Z][a-zA-Z0-9_]{3,31}', username):
+            parser.error('--reprocess-backfill requires a public source username.')
+        try:
+            args.reprocess_backfill = (username, bounded_backfill(number))
+        except argparse.ArgumentTypeError:
+            parser.error('--reprocess-backfill N must be between 1 and 500.')
     if args.reprocess_message:
         username, number = args.reprocess_message
         if not re.fullmatch(r'@?[a-zA-Z][a-zA-Z0-9_]{3,31}', username) or not number.isascii() or not number.isdigit() or not 0 < int(number) <= 2147483647:

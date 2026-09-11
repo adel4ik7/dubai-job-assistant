@@ -1,5 +1,22 @@
 # Dubai Job Assistant — TODO
 
+## Bounded reprocess-backfill — 2026-09-11
+- [x] `collector.py --reprocess-backfill SOURCE N` reprocesses a single latest-post
+  snapshot of 1–500 messages from one configured enabled public broadcast channel.
+- [x] Uses existing `process_message(force=True)` and store hash dedup/update logic;
+  retries photo OCR, preserves record IDs/saved links and does not touch the source
+  checkpoint. Repeated runs remain idempotent. No new matching or product features.
+- [x] Sequential processing, per-message error isolation, FloodWait handling and
+  cancellation preserve existing safety behavior; debug-pipeline remains opt-in.
+- [x] Regression tests: repeated batch + disabled OCR records + repost links,
+  bounded source selection, failed posts/FloodWait and cancellation.
+- Verification passed: 128 tests including real local OCR, compileall, dependency
+  and diff checks. No live Telegram replay or changes to user records during development.
+- Next exact action: stop any collector sharing the session, then run
+  `.\.venv\Scripts\python.exe collector.py --reprocess-backfill jobs_in_dubai 50 --debug-pipeline`.
+  Inspect repaired cards with bot filters cleared. OCR must be enabled and models ready.
+- Commit title: `Add bounded vacancy backfill reprocessing using existing deduplication`.
+
 ## Photo-vacancy diagnosis and fix — 2026-09-11
 - [x] Read-only local diagnosis: OCR flag was false; aggregate DB counts showed
   22 supported images with `ocr_status=disabled`, including 18 without captions.

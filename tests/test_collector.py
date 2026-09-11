@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from telethon import types, errors
-from collector import Collector, bounded_backfill
+from collector import Collector, bounded_backfill, reprocess_backfill
 from collector_config import load_collector_settings
 from db import Database
 from vacancy_store import VacancyStore
@@ -142,3 +142,65 @@ class CollectorTests(unittest.IsolatedAsyncioTestCase):
         changed = analyze_text('Hiring waiter in Sharjah. Send CV other@example.com')
         self.store.update_pipeline(first, changed)
         self.assertIsNone(self.store.get(second)['duplicate_of'])
+
+    async def test_reprocess_backfill_updates_photos_and_reuses_dedup(self):
+        from services.vacancy_pipeline import analyze_text
+        content = 'Hiring analyst in Dubai. SQL required. Send CV jobs@example.com'
+        old, _ = self.store.insert(self.source_id, 1, ocr_status='disabled', detection_status='not_vacancy')
+        other = self.store.add_source('other_jobs')
+        duplicate, _ = self.store.insert(other, 1, **analyze_text(content))
+        self.store.save(2, duplicate)
+        self.store.checkpoint(self.source_id, 50)
+        before = self.store.sources()[0]
+        self.client.get_messages.return_value = [self.message(2), self.message(1, '')]
+        self.collector.processor = AsyncMock(return_value=dict(**analyze_text('', content), ocr_status='processed'))
+        for _ in range(2):
+            await reprocess_backfill(self.collector, 'test_jobs', 2)
+        self.assertEqual(self.store.message_record(self.source_id, 1)['id'], old)
+        self.assertEqual(self.store.get(old)['ocr_status'], 'processed')
+        self.assertEqual(self.store.get(duplicate)['duplicate_of'], old)
+        self.assertTrue(self.store.is_saved(2, old))
+        self.assertEqual(self.store.sources()[0], before)
+        self.assertEqual(len(self.store.list()), 1)
+        self.assertEqual(self.store.stats()['collected'], 3)  # Three source-post records, one vacancy.
+        self.client.get_messages.assert_awaited_with(self.entity, limit=2, wait_time=1)
+        self.assertEqual(self.collector.processor.await_count, 4)
+
+    async def test_reprocess_backfill_flood_wait_and_bad_message_continue(self):
+        from services.vacancy_pipeline import analyze_text
+        self.client.get_messages.side_effect = [errors.FloodWaitError(None, capture=3),
+                                                [self.message(3), self.message(2), self.message(1)]]
+        self.collector.processor = AsyncMock(side_effect=[
+            errors.FloodWaitError(None, capture=4), ValueError('secret-details'),
+            analyze_text('Hiring analyst in Dubai @hr_dubai'), analyze_text('Hiring driver in Dubai @hr_dubai')])
+        with self.assertLogs('collector') as logs:
+            await reprocess_backfill(self.collector, 'test_jobs', 3)
+        self.sleep.assert_any_await(3)
+        self.sleep.assert_any_await(4)
+        self.assertNotIn('secret-details', ''.join(logs.output))
+        self.assertTrue(self.store.has_message(self.source_id, 2))
+        self.assertTrue(self.store.has_message(self.source_id, 3))
+        self.assertFalse(self.store.has_message(self.source_id, 1))
+        self.assertIsNone(self.store.sources()[0]['last_checked_at'])
+
+    async def test_reprocess_backfill_refuses_invalid_limits_and_sources(self):
+        for limit in (0, 501, 'bad'):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                await reprocess_backfill(self.collector, 'test_jobs', limit)
+        await reprocess_backfill(self.collector, 'unknown_jobs', 5)
+        self.client.get_entity.assert_not_awaited()
+        self.store.enable_source(self.source_id, False)
+        await reprocess_backfill(self.collector, 'test_jobs', 5)
+        self.client.get_entity.assert_not_awaited()
+        self.store.enable_source(self.source_id, True)
+        self.entity.broadcast = False
+        await reprocess_backfill(self.collector, 'test_jobs', 5)
+        self.client.get_messages.assert_not_awaited()
+
+    async def test_reprocess_backfill_cancel_preserves_cursor(self):
+        import asyncio
+        self.client.get_messages.return_value = [self.message(1)]
+        self.collector.processor = AsyncMock(side_effect=asyncio.CancelledError)
+        with self.assertRaises(asyncio.CancelledError):
+            await reprocess_backfill(self.collector, 'test_jobs', 1)
+        self.assertIsNone(self.store.sources()[0]['last_checked_at'])

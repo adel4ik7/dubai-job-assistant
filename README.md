@@ -92,6 +92,27 @@ if you have applied. The record is inserted only when the entire form is complet
 
 ### Recovery, retention and admin
 
+To reprocess the last 50 posts of one source, including photos previously saved
+with OCR disabled:
+
+```powershell
+python collector.py --reprocess-backfill jobs_in_dubai 50
+# Optional safe diagnostics:
+python collector.py --reprocess-backfill jobs_in_dubai 50 --debug-pipeline
+```
+
+N must be 1–500. Only an enabled, configured public broadcast channel is accepted.
+The command reads one bounded snapshot of the latest N messages, processes them
+sequentially and exits. Existing source/message rows are updated in place; new posts
+are inserted once. Existing content-hash deduplication groups reposts while retaining
+their source links. Saved links and the ordinary collection cursor remain intact.
+FloodWait is respected; one failed post does not stop later posts. Re-running the
+same command does not create duplicate vacancy records. Successful old OCR is
+preserved if a retry fails. Enable `VACANCY_OCR_ENABLED=true` and prepare the local
+models first to recover image-only posts. Stop any other collector using the same
+session before running this command. Unlike ordinary `--backfill`, this mode retries
+already collected messages. It cannot be combined with `--backfill`.
+
 #### Diagnosing image-only posts
 
 The photo-path bug in v0.4 is fixed: Telethon can change the requested temporary
