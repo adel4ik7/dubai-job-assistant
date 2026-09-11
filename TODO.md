@@ -3,17 +3,21 @@
 ## v0.4 — Telegram Vacancy Collector
 - [x] v0.4a: separate Telethon process, local source configuration/SQLite tables,
   safe first-run baseline, bounded backfill, source controls and checkpointing.
-- [ ] v0.4b: local OCR, preprocessing, vacancy detection, conservative field parser.
+- [x] v0.4b: local OCR, preprocessing, vacancy detection, conservative field parser.
 - [ ] v0.4c: localized Vacancies UI, bounded CV ranking, saved and application conversion.
 - [ ] v0.4d: content deduplication, admin stats, recovery/hardening and final verification.
-- v0.4a stores posts as `pending`; it does not yet surface them to bot users.
+- v0.4b now processes new posts with `VacancyPipeline`; bot screens are next.
   Existing user/profile/CV/application tables are preserved. No Telegram login was
   performed. Source seed is `sources.json`; SQLite becomes authoritative after seeding.
 - v0.4a verification: 93 local tests, compileall and dependency check. Telethon installed
   locally; tests use a fake transport and never require Telegram credentials.
-- Exact next step: implement `services/vacancy_detector.py`, `vacancy_parser.py`,
-  `ocr.py` and inject their pipeline into `Collector.processor` in `collector.py`.
-  Then implement `vacancy_ui.py` using shared localization and `VacancyStore`.
+- v0.4b: 103 tests passed, including detector negatives, salary/contact/location/OR,
+  hashing, duplicate links, image preprocessing and injected OCR success/failure.
+  EasyOCR is optional in requirements-ocr.txt; `--prepare-ocr` downloads local models.
+  Actual EasyOCR weights/accuracy and Telegram login are not exercised by unit tests.
+- Exact next step: implement `vacancy_ui.py` using shared localization and
+  `VacancyStore`; extend application conversion and privacy deletion of saved links.
+  Then add admin stats, retained-media expiry, reprocessing and final hardening.
 
 ## Current checkpoint — RU/EN localization (2026-09-11)
 

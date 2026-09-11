@@ -10,6 +10,7 @@ from collector_config import load_collector_settings
 from config import BASE_DIR
 from db import Database
 from vacancy_store import VacancyStore
+from services.vacancy_pipeline import VacancyPipeline
 
 log = logging.getLogger('collector')
 
@@ -39,7 +40,7 @@ class Collector:
         raw = getattr(message, 'message', '') or ''
         date = getattr(message, 'date', None)
         values = dict(raw_text=raw, combined_text=raw,
-            published_at=date.isoformat() if date else None,
+            published_at=date.isoformat() if hasattr(date, 'isoformat') else None,
             source_url=f"https://t.me/{source['telegram_username']}/{message_id}")
         if self.processor:
             try:
@@ -122,6 +123,11 @@ async def authenticate(client, phone):
 
 
 async def run(args):
+    if args.prepare_ocr:
+        from services.ocr import EasyOCREngine
+        await asyncio.to_thread(EasyOCREngine, BASE_DIR / 'ocr_models', True)
+        log.info('Local OCR models are ready.')
+        return
     data_dir = BASE_DIR / 'data'
     data_dir.mkdir(exist_ok=True)
     store = VacancyStore(Database(data_dir / 'bot.sqlite3'))
@@ -142,7 +148,14 @@ async def run(args):
                             receive_updates=False, flood_sleep_threshold=0)
     try:
         await authenticate(client, settings.phone)
-        collector = Collector(client, store)
+        from services.ocr import EasyOCREngine
+        engine = None
+        if settings.ocr_enabled:
+            try:
+                engine = await asyncio.to_thread(EasyOCREngine, BASE_DIR / 'ocr_models')
+            except Exception:
+                log.warning('OCR unavailable; install requirements-ocr.txt and prepare local models. Text collection remains available.')
+        collector = Collector(client, store, VacancyPipeline(settings, engine))
         while True:
             await collector.run_once(args.backfill)
             if args.once or args.backfill:
@@ -157,6 +170,7 @@ def main():
     parser.add_argument('--backfill', type=bounded_backfill, help='Fetch latest N posts (1-500), then exit.')
     parser.add_argument('--once', action='store_true', help='One polling cycle, then exit.')
     group = parser.add_mutually_exclusive_group()
+    group.add_argument('--prepare-ocr', action='store_true', help='Download free EN/RU OCR models once; no Telegram login.')
     group.add_argument('--add-source', metavar='USERNAME')
     group.add_argument('--list-sources', action='store_true')
     group.add_argument('--disable-source', type=int, metavar='ID')

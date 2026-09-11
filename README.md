@@ -36,8 +36,35 @@ Later runs process up to 100 new posts per source per poll, sequentially; the de
 poll is 300 seconds (minimum 60). FloodWait pauses for Telegram's requested duration.
 Do not use the account for spam or to bypass Telegram limits.
 
-v0.4a checkpoint: raw posts are stored as pending; OCR, detection and bot vacancy
-screens are the next stages. Existing v0.3 bot functionality remains available.
+Posts are classified locally as vacancy / probably_vacancy / not_vacancy, using
+independent intent, role, salary, contact, location and requirement signals. This
+is heuristic confidence, not a guarantee of authenticity. Unknown fields remain
+empty; an amount without a stated currency does not silently become AED. Repeated
+posts retain source records with `duplicate_of`; source footers do not change hashes.
+
+### Optional local OCR (EasyOCR, CPU, English + Russian)
+
+Install CPU PyTorch and torchvision first on Windows, then the optional OCR extras:
+
+```powershell
+python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+python -m pip install -r requirements-ocr.txt
+python collector.py --prepare-ocr
+```
+
+Setup downloads free model weights once into gitignored `ocr_models/`. Collection
+itself never downloads models or calls an OCR service. Set `VACANCY_OCR_ENABLED=true`
+in `.env` after setup. Without OCR dependencies/models, text collection still works;
+image-only posts are retained with their OCR status for later inspection/retry.
+See https://github.com/JaidedAI/EasyOCR for upstream installation guidance.
+
+Images alone are downloaded for OCR, up to 10 MB; preprocessing caps image pixels,
+resizes, converts a temporary copy to grayscale and enhances contrast. Failures do
+not stop other posts. `VACANCY_KEEP_MEDIA=false` removes temporary files on success
+and failure; true retains originals after successful recognition in `collector_media/`.
+Do not use OCR-derived contact or salary details without checking the original post.
+The automated image fixture tests exercise preprocessing and the pipeline with an
+injected engine, without model downloads; actual OCR accuracy requires local setup.
 
 A local Telegram assistant for early testers. It helps users organize CVs, compare
 vacancies and track applications. **v0.3 makes no OpenAI calls and uses no paid
