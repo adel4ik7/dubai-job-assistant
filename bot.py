@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from uuid import uuid4
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
@@ -14,7 +15,8 @@ from telegram.ext import (
 )
 
 from config import Settings, load_settings
-from db import Database
+from db import Database, STATUSES
+from product_ui import ProductUI, WAIT_FORM, WAIT_SEARCH
 from services.ai import AIError, AIService, OpenAIProvider, TASKS, message_chunks
 from services.matcher import analyse_match, format_analysis
 from services.resume_parser import ResumeParseError, extract_text
@@ -31,17 +33,16 @@ for logger_name in ("httpx", "httpcore", "telegram", "pypdf"):
 settings: Settings
 db: Database
 ai: AIService
+product: ProductUI
 
 WAIT_VACANCY = 1
 WAIT_APPLICATION = 2
 WAIT_AI_VACANCY = 3
 
 MAIN_MENU = InlineKeyboardMarkup([
-    [InlineKeyboardButton("📄 Upload CV", callback_data="upload_cv")],
+    [InlineKeyboardButton("👤 Profile", callback_data="p:profile"), InlineKeyboardButton("📄 CVs", callback_data="p:cvs:0")],
     [InlineKeyboardButton("🎯 Analyse vacancy", callback_data="analyse_vacancy")],
-    [InlineKeyboardButton("✨ AI assistant", callback_data="ai_menu")],
-    [InlineKeyboardButton("➕ Add application", callback_data="add_application")],
-    [InlineKeyboardButton("📋 My applications", callback_data="my_applications")],
+    [InlineKeyboardButton("📋 Applications", callback_data="p:apps:0"), InlineKeyboardButton("📊 Dashboard", callback_data="p:dashboard")],
     [InlineKeyboardButton("ℹ️ Help", callback_data="help")],
 ])
 
@@ -56,6 +57,7 @@ async def ensure_user(update: Update) -> None:
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    reset_pending(context)
     context.user_data.pop("ai_action", None)
     await ensure_user(update)
     text = (
@@ -68,6 +70,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    reset_pending(context)
     context.user_data.pop("ai_action", None)
     await ensure_user(update)
     await update.message.reply_text("Choose an action:", reply_markup=MAIN_MENU)
@@ -76,22 +79,35 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await ensure_user(update)
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "Commands:\n"
         "/start — open the bot\n"
         "/menu — main menu\n"
         "/cancel — cancel the current action\n\n"
         "CV formats: PDF, DOCX, TXT.\n"
         "Analyse vacancy is a local heuristic, not an official ATS score.\n"
-        "AI assistant: CV review, bullet improvements, cover letter and interview questions.\n"
-        "AI actions send CV text and any vacancy to OpenAI after your confirmation."
+        "Profile — preferences and self-reported facts.\n"
+        "CVs — upload, choose active, or delete.\n"
+        "Applications — add, search, filter and change status.\n"
+        "Dashboard — current application statistics.\n"
+        "/status ID STATUS — change application status\n"
+        "/delete_my_data — delete your local data after confirmation.\n"
+        "Use a private chat. Files and text are stored on the owner's laptop. AI is disabled in v0.3.",
+        reply_markup=MAIN_MENU,
     )
 
 
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
+    if getattr(getattr(update, "effective_chat", None), "type", "private") != "private":
+        await query.message.reply_text("Please use a private chat with the bot.")
+        return ConversationHandler.END
     await ensure_user(update)
+    handled = await product.buttons(update, context)
+    if handled is not None:
+        return handled
+    reset_pending(context)
 
     if query.data == "ai_menu":
         context.user_data.pop("ai_action", None)
@@ -119,7 +135,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         if action not in TASKS or not ai.available:
             await query.message.reply_text("AI is unavailable. Use Analyse vacancy.", reply_markup=MAIN_MENU)
             return ConversationHandler.END
-        if not db.latest_resume(user_id(update)):
+        if not db.active_resume(user_id(update)):
             await query.message.reply_text("Upload a CV first.", reply_markup=MAIN_MENU)
             return ConversationHandler.END
         if action == "review":
@@ -139,7 +155,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return ConversationHandler.END
 
     if query.data == "analyse_vacancy":
-        resume = db.latest_resume(user_id(update))
+        resume = db.active_resume(user_id(update))
         if not resume:
             await query.message.reply_text("Upload a CV first.", reply_markup=MAIN_MENU)
             return ConversationHandler.END
@@ -171,14 +187,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return ConversationHandler.END
 
     if query.data == "help":
-        await query.message.reply_text(
-            "1. Upload CV\n"
-            "2. Paste a vacancy\n"
-            "3. Get a match report\n"
-            "4. Save applications and update their status\n\n"
-            "AI assistant can review your CV and draft application materials. "
-            "AI actions send text to OpenAI; verify the resulting drafts."
-        )
+        await help_command(update, context)
         return ConversationHandler.END
 
     return ConversationHandler.END
@@ -195,18 +204,22 @@ async def receive_cv(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if suffix not in {".pdf", ".docx", ".txt"}:
         await update.message.reply_text("Supported formats: PDF, DOCX, TXT.")
         return
+    if doc.file_size and doc.file_size > 5 * 1024 * 1024:
+        await update.message.reply_text("Please upload a CV smaller than 5 MB.")
+        return
 
     tg_file = await doc.get_file()
-    safe_name = f"{user_id(update)}_{doc.file_unique_id}{suffix}"
+    safe_name = f"{user_id(update)}_{uuid4().hex}{suffix}"
     path = settings.uploads_dir / safe_name
-    await tg_file.download_to_drive(custom_path=path)
-
     try:
+        await tg_file.download_to_drive(custom_path=path)
         text = extract_text(path)
     except ResumeParseError as exc:
+        cleanup_failed_upload(path)
         await update.message.reply_text(f"Could not read CV: {exc}")
         return
     except Exception:
+        cleanup_failed_upload(path)
         log.error("CV parse failed; details omitted for privacy")
         await update.message.reply_text("Could not parse this file.")
         return
@@ -224,16 +237,16 @@ async def vacancy_received(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if len(vacancy) < 100:
         await update.message.reply_text("The vacancy text is too short. Paste the full description.")
         return WAIT_VACANCY
+    if len(vacancy) > 12000:
+        await update.message.reply_text("Use at most 12,000 characters, or /cancel.")
+        return WAIT_VACANCY
 
-    resume = db.latest_resume(user_id(update))
+    resume = db.active_resume(user_id(update))
     if not resume:
         await update.message.reply_text("CV not found. Upload it again.")
         return ConversationHandler.END
 
-    result = analyse_match(resume["extracted_text"], vacancy)
-    chunks = message_chunks(format_analysis(result))
-    for index, chunk in enumerate(chunks):
-        await update.message.reply_text(chunk, reply_markup=MAIN_MENU if index == len(chunks) - 1 else None)
+    await product.report(update, context, vacancy, resume)
     return ConversationHandler.END
 
 
@@ -266,11 +279,15 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     app_id = int(context.args[0])
     status = " ".join(context.args[1:]).strip()[:40]
+    if status not in STATUSES:
+        await update.message.reply_text("Choose a status: " + ", ".join(STATUSES))
+        return
     ok = db.update_application_status(user_id(update), app_id, status)
     await update.message.reply_text("✅ Status updated." if ok else "Application not found.")
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    reset_pending(context)
     context.user_data.pop("ai_action", None)
     await update.message.reply_text("Cancelled.", reply_markup=MAIN_MENU)
     return ConversationHandler.END
@@ -283,7 +300,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def run_ai(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, vacancy: str = "") -> int:
-    resume = db.latest_resume(user_id(update))
+    resume = db.active_resume(user_id(update))
     message = update.effective_message
     if not resume:
         await message.reply_text("Upload a CV first.", reply_markup=MAIN_MENU)
@@ -312,18 +329,42 @@ async def ai_vacancy_received(update: Update, context: ContextTypes.DEFAULT_TYPE
     return await run_ai(update, context, action, vacancy)
 
 
+def reset_pending(context) -> None:
+    for key in ("form", "delete_confirmation", "cv_delete", "ai_action"):
+        context.user_data.pop(key, None)
+
+
+def cleanup_failed_upload(path: Path) -> None:
+    # Only called with a freshly generated path inside settings.uploads_dir.
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        log.error("Failed upload cleanup incomplete; delete-my-data can retry")
+
+
+async def cv_received(update, context):
+    reset_pending(context)
+    await receive_cv(update, context)
+    return ConversationHandler.END
+
+
 def build_application(config: Settings | None = None) -> Application:
-    global settings, db, ai
+    global settings, db, ai, product
     settings = config or load_settings()
     db = Database(settings.database_path)
-    provider = OpenAIProvider(settings.openai_api_key, settings.openai_model) if settings.openai_api_key else None
-    ai = AIService(provider, db, settings.ai_daily_limit)
+    # v0.3 is strictly local, even if an old .env still contains an API key.
+    ai = AIService(None, db, settings.ai_daily_limit)
+    product = ProductUI(db, settings.uploads_dir, MAIN_MENU)
     app = Application.builder().token(settings.telegram_bot_token).concurrent_updates(False).build()
 
     conversation = ConversationHandler(
-        entry_points=[CallbackQueryHandler(buttons), CommandHandler("start", start),
-                      CommandHandler("menu", menu), CommandHandler("cancel", cancel)],
+        entry_points=[CallbackQueryHandler(buttons), CommandHandler("start", start, filters=filters.ChatType.PRIVATE),
+                      CommandHandler("menu", menu, filters=filters.ChatType.PRIVATE), CommandHandler("cancel", cancel, filters=filters.ChatType.PRIVATE),
+                      CommandHandler("delete_my_data", product.delete_my_data, filters=filters.ChatType.PRIVATE),
+                      MessageHandler(filters.Document.ALL & filters.ChatType.PRIVATE, cv_received)],
         states={
+            WAIT_FORM: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, product.form_received)],
+            WAIT_SEARCH: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, product.search_received)],
             WAIT_AI_VACANCY: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, ai_vacancy_received)
             ],
@@ -338,9 +379,8 @@ def build_application(config: Settings | None = None) -> Application:
         allow_reentry=True,
     )
 
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("status", status_command))
-    app.add_handler(MessageHandler(filters.Document.ALL, receive_cv))
+    app.add_handler(CommandHandler("help", help_command, filters=filters.ChatType.PRIVATE))
+    app.add_handler(CommandHandler("status", status_command, filters=filters.ChatType.PRIVATE))
     app.add_handler(conversation)
     app.add_error_handler(error_handler)
     return app

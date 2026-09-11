@@ -1,5 +1,62 @@
 # Dubai Job Assistant — TODO
 
+## v0.3 — product usability and user profile (2026-09-11 checkpoint)
+- [x] Profile create/view/edit: all eight fields, validation and cancellable forms.
+- [x] Multiple CV list/pagination, persistent active CV, individual confirmed deletion.
+- [x] Applications v2: all fields, nine statuses, detail view and status buttons.
+- [x] Status filters and Unicode case-insensitive company/role search with pagination.
+- [x] Dashboard counts and explicitly labelled current-state conversion ratios.
+- [x] Analysis follow-ups: save vacancy, compare another CV, important/profile gaps.
+- [x] `/delete_my_data`: expiring confirmation, local files + all user records + session state.
+- [x] Six-section private-chat menu; legacy status/entry and matcher compatibility.
+- [x] Production AI is disabled in v0.3 even with an existing API key. No paid services.
+- [x] Automated migration, CRUD, selection, filters, dashboard, deletion and UI tests.
+- [ ] Manual live Telegram acceptance with two test users and sample CVs.
+
+### Implemented state and continuation
+- `db.py`: additive, idempotent SQLite migration; `profiles` and `active_resumes`
+  tables; application source/salary/date_applied/vacancy_text columns. No existing
+  user data is rewritten except backfilling legacy applied dates from created_at.
+  Existing custom statuses remain visible. First migration selects newest legacy CV;
+  later starts preserve selection. SQLite connections close explicitly and enable
+  secure_delete (not a guarantee for backups or forensic disk erasure).
+- `services/product.py`: field validation, separate self-reported profile gap checks,
+  and `UserFiles` deletion. It preflights path ownership/boundaries, preserves other
+  users' files and shared-file references, cleans failed-upload remnants, and retains
+  records if filesystem cleanup fails so the operation can be retried.
+- `product_ui.py`: profile/application forms, lists and pagination, status/search,
+  dashboard, analysis follow-ups and five-minute deletion confirmations. Stale form
+  and analysis buttons are rejected. Unfinished forms/analysis live only in memory.
+- `bot.py`: six-section menu, active-CV analysis, private-chat routing, unique upload
+  filenames, 5 MB upload limit and failed-upload cleanup. Existing matcher unchanged.
+  Legacy `Company | Role | notes`, `/status`, and disabled AI-menu fallback retained.
+- `tests/test_product.py` and `tests/test_product_ui.py`: new persistence/security/UX
+  checks; existing bot report test updated for the requested post-analysis buttons.
+- README replaced with v0.3 setup, user flows, migration, privacy, dashboard formulas
+  and a two-user manual acceptance checklist. Previous checkpoints below are historical.
+
+### Verification / next exact step
+- Final commands: `.\.venv\Scripts\python.exe -m unittest discover -s tests -q`,
+  `.\.venv\Scripts\python.exe -m compileall .`, `.\.venv\Scripts\python.exe -m pip check`.
+- Test suite: 75 tests (49 previous + 26 new), all local with mock network transports.
+  Real Telegram Application construction and handler flow are tested without polling.
+- Final verification on 2026-09-11: all 75 tests passed; compileall, pip check and
+  git diff --check passed. PTB's existing mixed-conversation warning and asyncio
+  slow-callback notices during SQLite test setup are non-failing diagnostics.
+- No live Telegram polling or actual API requests were started. No real user data was
+  deleted during development; destructive tests operate in temporary test directories.
+- Manual next action: run `.\.venv\Scripts\python.exe bot.py` with the owner's locally
+  configured Telegram token; follow README's early-tester smoke test with two users.
+  Back up existing data securely before deploying the migration. Owner-created backups
+  and Telegram message history are outside `/delete_my_data` and need separate handling.
+- If issues appear, continue in `product_ui.py:buttons` / `form_received` for UX,
+  `db.py:_init` for migration, or `services/product.py:UserFiles` for deletion. Add
+  synthetic regression tests before fixing. Known limits: profile comparison is
+  conservative and does not infer salary fit or specialist experience; dashboard is
+  a current-status snapshot, not historical funnel analytics. Forms reset on restart.
+- No unfinished implementation remains; only live acceptance is pending. Do not start
+  payment, API integration or Mini App. Commit title: `Add v0.3 profiles CV management and application workflows`.
+
 ## Current priority — offline heuristic analysis (2026-09-10)
 - [x] Real-vacancy fixes: OR/constituent deduplication, Dubai/UAE consolidation,
   5% maximum soft-skills contribution, grouped reports and separate category breakdown.
@@ -35,13 +92,13 @@ use mocks only. Earlier checkpoint is historical, not authorization to resume AP
 - [ ] Manual live acceptance with owner-provided Telegram/OpenAI credentials (see checkpoint)
 
 ## Milestone 2 — productization
-- [ ] User onboarding/profile
-- [ ] Desired role / salary / location / visa status
-- [ ] Better application tracker
+- [x] User onboarding/profile
+- [x] Desired role / salary / location / visa status
+- [x] Better application tracker
 - [ ] Analytics
 - [ ] Admin panel
-- [ ] Privacy / delete-my-data command
-- [ ] Logging without leaking CV text or secrets
+- [x] Privacy / delete-my-data command
+- [x] Logging without leaking CV text or secrets
 
 ## Milestone 3 — monetization
 - [ ] Free tier

@@ -1,212 +1,174 @@
-# Dubai Job Assistant — AI Telegram assistant
+# Dubai Job Assistant — v0.3
 
-Telegram bot for:
-- uploading a CV (PDF/DOCX/TXT);
-- extracting CV text;
-- pasting a vacancy;
-- classifying vacancy requirements and calculating a weighted local match score;
-- highlighting CV evidence, important gaps and optional gaps;
-- saving job applications in SQLite;
-- updating application status.
-- optional AI CV review, vacancy-specific bullet suggestions, cover-letter drafts and interview questions.
+A local Telegram assistant for early testers. It helps users organize CVs, compare
+vacancies and track applications. **v0.3 makes no OpenAI calls and uses no paid
+services**, even if an old `.env` contains an OpenAI key. AI provider code remains
+for compatibility; its production menu fallback reports that AI is disabled.
 
-## 1. Create the Telegram bot
+## Install and run
 
-Open `@BotFather` in Telegram:
-
-1. `/newbot`
-2. Choose a display name.
-3. Choose a username ending in `bot`.
-4. Copy the token.
-
-Do not publish the token.
-
-## 2. Install
-
-### Windows PowerShell
+Requires Python 3.10+ (tested on Windows with Python 3.12).
 
 ```powershell
 cd path\to\dubai_job_assistant
 py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -U pip
-pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+# Only if .env does not already exist:
 Copy-Item .env.example .env
 notepad .env
-```
-
-Paste the BotFather token into `.env`:
-
-```env
-TELEGRAM_BOT_TOKEN=123456:ABC...
-```
-
-Then:
-
-```powershell
-python bot.py
-```
-
-### macOS / Linux
-
-```bash
-cd /path/to/dubai_job_assistant
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -U pip
-pip install -r requirements.txt
-cp .env.example .env
-nano .env
-python bot.py
-```
-
-## 3. Test
-
-In Telegram:
-1. `/start`
-2. Upload a PDF/DOCX/TXT CV.
-3. Tap `Analyse vacancy`.
-4. Paste a full job description.
-5. Save an application.
-6. Change its status with `/status ID Interview`.
-
-## Important
-
-The match score is heuristic, not an official ATS score or guarantee. Local matching,
-CV uploads and the tracker work without an OpenAI key. AI features require an API
-account with model access and may incur API charges.
-
-## Optional AI setup
-
-Current development mode is offline heuristic analysis: no OpenAI calls or paid
-services are needed for **Analyse vacancy**. The existing optional AI menu is retained.
-
-Add these settings to your existing `.env` (do not overwrite your Telegram token):
-
-```env
-OPENAI_API_KEY=
-OPENAI_MODEL=gpt-4o-mini
-AI_DAILY_LIMIT=5
-```
-
-Fill the key locally. Leave it blank to disable AI; `AI_DAILY_LIMIT=0` also disables AI.
-Choose a Responses-compatible model available to your account. Restart after changes.
-No OpenAI SDK is required; the provider uses the project's HTTPX dependency.
-
-Open **AI assistant**, read the data-sharing notice, then choose an action.
-**Send CV for review** dispatches the saved CV. Other actions ask for a vacancy;
-sending the vacancy confirms sending both texts. `/cancel`, `/menu` and `/start`
-clear the pending AI action. Drafts distinguish CV facts, suggestions and information
-needing confirmation. The model is instructed never to invent candidate credentials;
-this is not a factual guarantee, so users must verify every draft.
-
-Limits: CV text 100–16,000 characters; vacancy 100–12,000 characters, in one Telegram
-message (the Telegram client may impose a smaller message limit). Oversized inputs
-are rejected, never silently truncated. The shared daily allowance across all four
-actions resets at 00:00 UTC. Dispatched attempts, including timeouts and failed API
-requests, count toward the allowance to bound repeated request costs. Invalid inputs
-and disabled AI do not count. Counters survive restarts in SQLite. No automatic retries.
-The overall AI wait is bounded to 45 seconds; output is limited and split for Telegram.
-
-## Privacy
-
-Uploaded files and extracted CV text are stored on the owner's laptop in `uploads/`
-and `data/`. They remain until the owner removes them; automated deletion is a future
-milestone. AI actions send extracted text to OpenAI, never the original file, filename,
-Telegram ID or username as separate fields. Contact details inside the CV text are
-still included: remove sensitive details before uploading if needed. Drafts are sent
-back through Telegram and are not saved in the local database.
-
-The provider uses the [Responses API](https://developers.openai.com/api/docs/guides/text)
-with `store=false`. This does not guarantee zero retention; provider abuse-monitoring
-retention may still apply. See [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data).
-HTTP transport logs and exception details are suppressed to avoid leaking tokens or CV
-text. Keep credentials only in the gitignored `.env`; do not enable HTTP debug logging.
-
-## Offline verification
-
-Requires Python 3.10 or later; this milestone was tested with Python 3.12 on Windows.
-
-```powershell
-.\.venv\Scripts\python.exe -m compileall .
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-.\.venv\Scripts\python.exe -m pip check
 .\.venv\Scripts\python.exe bot.py
 ```
 
-Tests need no credentials or network. They build the Telegram application with a
-synthetic token, exercise handlers with fake messages, mock the AI transport, and use
-temporary SQLite databases. Actual polling requires your BotFather token in `.env`.
-Importing `bot` no longer loads secrets, creates a database or starts polling.
+Create a Telegram bot via `@BotFather` /newbot and enter its token locally as
+`TELEGRAM_BOT_TOKEN` in `.env`. Never publish tokens or paste them into chat. Do not
+overwrite an existing `.env`. OpenAI settings are not needed for v0.3.
 
-Manual acceptance with your configured bot: upload a sample CV; run local matching;
-save/update an application; exercise each AI action; cancel a pending vacancy; reach
-the daily limit. Restart with `OPENAI_API_KEY` blank and confirm local features work.
+On macOS/Linux use `python3 -m venv .venv`, `.venv/bin/python -m pip install -r
+requirements.txt`, and `.venv/bin/python bot.py`. The laptop must remain running
+and connected for Telegram polling. Only one polling process should use the token.
 
-## Local vacancy analysis
+## Main menu
 
-`services/matcher.py` uses a curated English-language vocabulary and deterministic
-rules, not keyword frequency. It recognizes seven categories: hard skills, tools,
-experience, education/certifications, languages, location/visa and soft skills.
-Standalone filler words (good, looking, preferred, advantage, basic, skills,
-knowledge) cannot become scored requirements. Repetition does not increase weight.
+Use a **private chat** with the bot. The six sections are Profile, CVs, Analyse
+vacancy, Applications, Dashboard and Help. `/start` or `/menu` opens the menu;
+`/cancel` stops an unfinished form without saving it. Forms and the last analysis
+are held in memory and expire when the bot restarts; completed records persist.
 
-Aliases include Power BI/PowerBI, MS/Microsoft Excel/Excel, SQL/T-SQL/PL/SQL/Structured
-Query Language, Python/Python3/Python programming, and UAE/United Arab Emirates.
-PostgreSQL, MySQL and SQL Server can support a generic SQL requirement, while generic
-SQL does not establish experience with a particular database. Dubai can support a
-UAE location requirement; UAE alone does not establish Dubai residency.
+### Profile
 
-The group weights are hard skills **35%**, tools **20%**, experience **20%**, education
-**10%**, languages and location together **10%**, and soft skills **5%**. Within each
-group mandatory or unspecified requirements weigh 1, optional requirements weigh
-0.25. The group score is matched weight / total requirement weight. Empty groups are
-excluded and remaining group weights are normalized. A wholly optional group also
-receives only a quarter of its usual group weight. After normalization, the entire
-soft-skills category is capped at **5% of the overall score**, even when few other
-categories are present. A vacancy containing only soft skills receives an overall
-**N/A** rather than a misleading full match score. For example, with only Python
-and Excel required, an Excel-only CV scores 20 / (35 + 20), or 36%.
+Create a profile through a short field-by-field form. It stores full name, desired
+role, desired salary (include currency and period), current location, UAE visa
+status, years of experience, English level, and optional notes. Name is required;
+other fields can be skipped. View the profile and use a field's Edit button to
+change it or clear an optional value. Nothing is saved until the form completes.
+Years accept 0–80, including one decimal place. Salary and visa status are free
+text because currency, pay period and personal circumstances vary.
 
-Preferred/optional headings and local phrases such as 'an advantage' are recognized.
-Mandatory occurrences override optional duplicates; a higher preferred experience
-threshold stays optional. Simple two-item alternatives such as 'Python or SQL' count
-as one requirement. OR chains are recognized inside longer AND lists too. Reversed
-OR clauses and repeated constituent mentions (Power BI or Tableau; Power BI) are
-deduplicated before scoring. The explicit alternative remains sufficient; the bare
-repetition is not treated as a new mandatory condition. Distinct proficiency or
-experience thresholds remain separate. Partially overlapping OR groups are not
-merged into an overly broad OR.
+### CVs
 
-Dubai plus UAE/United Arab Emirates is one location constraint retaining Dubai's
-city specificity. A country-only CV statement does not prove Dubai residency. Visa,
-work authorization and local experience remain independent requirements.
+Upload PDF, DOCX or TXT files up to 5 MB. Each successful upload is a separate CV
+with a unique local filename and becomes active. The CV list marks the active CV
+with a star; use a CV's buttons to activate it or delete it after confirmation.
+Lists show five records per page. Deleting the active CV selects the newest
+remaining CV; deleting the last leaves no active CV. Re-uploading the same document
+does not overwrite an earlier file. Failed uploads are cleaned up when possible.
+Scanned PDFs without extractable text are not supported (no OCR service is used).
 
-Years must be explicitly stated in the CV and relevant to the
-required specialization; dates are not summed and unrelated experience is not added.
-Known degree subjects are checked. Negated skills and qualifications in progress do
-not count as established evidence. Requested advanced/fluent proficiency needs an
-explicit level statement. Past Dubai experience and relocation interest do not prove
-current residence; employer-sponsored visa benefits do not become candidate visa
-requirements, and location alone does not prove work authorization.
+### Analyse vacancy
 
-Reports show overall score, strong matches, important gaps, optional gaps and
-concrete recommendations. Every gap means **insufficient CV evidence**, not proof of
-a missing capability. Recommendations only highlight existing evidence or suggest
-verification/development; they never tell users to add unsupported qualifications.
-Related matches and gaps are grouped by category, showing up to four labels per
-group and a count of additional items. Repeated gap explanations and recommendations
-are consolidated. Full recognized requirements remain in the analyzer's returned
-data. The report includes a separate evidence breakdown for hard skills, tools,
-experience, education, languages, location and soft skills. Absent categories show
-N/A, not 0%. Language/location still share the 10% overall budget. Category percentages
-describe evidence coverage, not their contribution to the overall score.
-Any longer report is still split into Telegram-safe messages.
+Upload/select an active CV, then send the vacancy in one message (100–12,000
+characters; Telegram clients may impose a smaller message limit). The local report
+names the CV used and offers four follow-up actions:
 
-This measures recognized CV evidence, not hiring probability or an official ATS
-score. A small dictionary cannot cover every occupation, degree, language level,
-negation or complex alternative. Bare mentions do not prove competence. Unknown
-requirements need manual review; when none are recognized the score is **N/A**.
-The initial rules target English-language Dubai vacancies; other languages require
-manual review. Add vocabulary in `CATALOG`, normalization in `normalize`, and
-regressions in `tests/test_matcher.py` when extending coverage.
+- **Save vacancy/application**: enter company, role and tracking details; choose
+  Saved if you have not applied. The original vacancy text is saved with the record.
+- **Compare with another CV**: analyzes the same vacancy with another saved CV.
+  It does not change the active CV. Use the newest report's buttons.
+- **Most important gaps**: shows mandatory requirements not confirmed in that CV.
+- **Profile gaps**: shows missing profile fields and limited comparisons for
+  experience, language, location and visa. Profile facts never alter the CV score
+  or become CV evidence. Desired role and salary need manual comparison.
+
+### Applications
+
+Add records through the Applications form. Fields: company, role, status, source,
+salary if known, date applied (YYYY-MM-DD; blank if unknown/not applied), and notes.
+Open a record to see its details or change status. Search by company or role;
+Unicode case-insensitive substring search combines with the selected status filter.
+Clear filters to see all records. Lists are paginated.
+
+Statuses: Saved, Applied, HR screening, Interview, Test task, Final interview,
+Offer, Rejected, Withdrawn. `/status ID STATUS` still works, including multiword
+statuses. Old `Company | Role | optional note` entry buttons remain supported.
+Changing a record with no applied date to a submitted stage sets today's date.
+
+### Dashboard
+
+- Total: every application record, including Saved and legacy statuses.
+- Active: Applied, HR screening, Interview, Test task, Final interview.
+- Interviews: records currently in Interview, Test task or Final interview.
+- Offers/rejections: records currently at Offer/Rejected.
+- Interview-stage and offer rates: respective current counts divided by records
+  with listed submitted statuses (excludes Saved, Withdrawn and unknown legacy
+  statuses). Empty denominators produce 0%.
+
+These are **current-state ratios**, not lifetime funnel conversion rates; there is
+no transition-history inference. Offers are excluded from active applications.
+
+## Privacy and deletion
+
+Files are stored under `uploads/`; extracted CV text, profiles, saved vacancy text
+and applications are in `data/bot.sqlite3`. Both directories and `.env` are
+ gitignored. Logs omit raw CVs, secrets and exception details. Do not enable HTTP
+transport debug logging. Use sample or redacted CVs for early testing.
+
+`/delete_my_data` asks for explicit confirmation, valid for five minutes. Confirming
+removes the user's profile, CV records, application records, active CV pointer,
+usage counters and user row; deletes their local CV files (including failed-upload
+remnants); and clears their in-memory form/analysis state. Cancel leaves data intact.
+Another user's data cannot be selected or removed by changing a record ID.
+
+Only generated files inside the configured uploads folder with the user's filename
+prefix are eligible for deletion. Unsafe paths or conflicting ownership records
+stop deletion for owner assistance. File-access failures keep DB records for a
+retry; some files may already have been removed, and retry handles missing files.
+Historical CV records sharing one file retain it until the final record is removed.
+This deletes the product's local data, **not Telegram message history, manually
+made backups or copies elsewhere**; it is not a forensic disk-erasure guarantee.
+
+## Existing installations
+
+On startup SQLite migration adds missing profile/active-CV tables and application
+columns without rebuilding or deleting old tables. The newest legacy CV becomes
+active; an existing active selection survives restart. Legacy notes/statuses remain
+unchanged. Old applied dates are initialized from `created_at`. Unknown old statuses
+are still visible and may be changed to one of the new statuses. Back up local data
+securely before deploying an update; owner-created backups require separate deletion.
+
+## Local matcher
+
+The English-language matcher uses a small explicit vocabulary, not word frequency.
+It recognizes hard skills, tools, experience, education/certifications, languages,
+location/visa and soft skills. Standalone filler words never become requirements.
+Aliases include Power BI/PowerBI, MS/Microsoft Excel, SQL/T-SQL/PL/SQL, Python3,
+and UAE/United Arab Emirates. Generic SQL does not prove a specific database tool.
+
+Relative weights: hard skills 35, tools 20, experience 20, education 10, languages
+and location together 10; soft skills contribute at most 5% after normalization.
+Absent categories are excluded; optional items and wholly optional groups use
+quarter weight. Soft-only/unrecognized vacancies produce overall N/A. Breakdown
+percentages describe evidence coverage, not each category's contribution.
+
+OR alternatives accept one tool; repeated constituent mentions and reversed ORs
+are deduplicated. Dubai/UAE repetitions become one geographic constraint retaining
+city specificity. Visa/work authorization remain separate. Explicit years stay
+scoped to relevant experience; dates are not summed. Negated skills, unfinished
+qualifications, unknown degree subjects and unconfirmed proficiency are handled
+conservatively. Related gaps are grouped; long Telegram messages are split safely.
+
+A gap means insufficient evidence, not proof that a capability is absent. Advice
+never tells users to invent skills or experience. This is **not an official ATS
+score** or hiring guarantee. Unrecognized occupations, complex phrases, non-English
+vacancies and implicit facts need manual review. Extend `services/matcher.py` with
+synthetic regression cases when real vacancies reveal limitations.
+
+## Verification
+
+```powershell
+.\.venv\Scripts\python.exe -m compileall .
+.\.venv\Scripts\python.exe -m unittest discover -s tests -q
+.\.venv\Scripts\python.exe -m pip check
+```
+
+Automated tests use temporary SQLite/files, synthetic tokens and mocked Telegram
+messages/provider transport. They cover old-schema migration, profile CRUD, multiple
+CVs and selection, filters, dashboard calculations, private-chat controls, forms,
+delete confirmation/cancellation, safe file deletion/retry, local analysis and
+existing features. No actual OpenAI requests occur. Offline Application construction
+checks startup wiring; live Telegram polling still needs manual acceptance.
+
+Early-tester smoke test: create/edit profile; upload two sample CVs; select the first;
+analyze a vacancy; compare the second; inspect both gap actions; save an application;
+change/filter/search its status; check dashboard; cancel then confirm CV deletion;
+restart and check persistence; cancel then confirm `/delete_my_data`; check that a
+second tester's records remain. Keep API features disabled.

@@ -94,7 +94,8 @@ class BotTests(unittest.IsolatedAsyncioTestCase):
         self.assertLessEqual(len(sent), 2)
         self.assertTrue(all(len(text.encode("utf-16-le")) // 2 <= 3500 for text in sent))
         self.assertIn("not an official ATS score", "".join(sent))
-        self.assertEqual(self.message.reply_text.call_args.kwargs["reply_markup"], bot.MAIN_MENU)
+        markup = self.message.reply_text.call_args.kwargs["reply_markup"]
+        self.assertTrue(any(button.text == "Save vacancy/application" for row in markup.inline_keyboard for button in row))
 
     async def test_menu_resets_real_conversation_routing(self):
         conversation = next(h for h in self.app.handlers[0] if isinstance(h, ConversationHandler))
