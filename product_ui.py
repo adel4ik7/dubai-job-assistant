@@ -48,10 +48,17 @@ class ProductUI:
         tr = self.translator(update)
         profile = self.db.get_profile(update.effective_user.id)
         text = tr('profile') + ('\n'.join((f"{label}: {value_label(self.language(update), key, profile[key]) or tr('not_specified')}" for key, label in field_labels(self.language(update), PROFILE_FIELDS).items())) if profile else tr('create_your_profile_to_check_application_preferences'))
-        rows = [[(tr('edit') + label, 'p:edit:' + key)] for key, label in field_labels(self.language(update), PROFILE_FIELDS).items()] if profile else [[(tr('create_profile'), 'p:create')]]
+        rows = [[(tr('profile_edit_button'), 'p:profileedit')]] if profile else [[(tr('create_profile'), 'p:create')]]
         rows.append([(tr('language_button'), 'p:language')])
         rows.append([(tr('main_menu'), 'p:home')])
         await self.reply(update, text, keyboard(rows))
+
+    async def profile_edit(self, update):
+        tr = self.translator(update)
+        fields = [(tr('profile_edit_' + key), 'p:edit:' + key) for key in PROFILE_FIELDS]
+        rows = [fields[index:index + 2] for index in range(0, len(fields), 2)]
+        rows += [[(tr('profile_done'), 'p:profile')], [(tr('profile_back'), 'p:profile')]]
+        await self.reply(update, tr('profile_edit_prompt'), keyboard(rows))
 
     async def prompt(self, update, context):
         tr = self.translator(update)
@@ -66,11 +73,11 @@ class ProductUI:
             rows.insert(0, [(tr('v_keep_value', value=value_label(self.language(update), field, form['values'][field])[:70]), f"p:keep:{form['nonce']}")])
         if field not in {'company', 'role', 'full_name', 'status'}:
             rows.append([(tr('skip_clear'), f"p:skip:{form['nonce']}")])
-        rows.append([(tr('cancel'), 'p:home')])
+        rows.append([(tr('cancel'), 'p:profileedit' if form.get('return_to') == 'profile_edit' else 'p:home')])
         await self.reply(update, tr('v0_v1_v2_send_a_value_or_use_the_buttons_cancel_stops_withou', v0=form['index'] + 1, v1=len(form['fields']), v2=labels[field]), keyboard(rows))
 
-    async def begin_form(self, update, context, kind, fields, defaults=None):
-        context.user_data['form'] = {'kind': kind, 'fields': list(fields), 'index': 0, 'values': defaults or {}, 'nonce': secrets.token_hex(4)}
+    async def begin_form(self, update, context, kind, fields, defaults=None, return_to=None):
+        context.user_data['form'] = {'kind': kind, 'fields': list(fields), 'index': 0, 'values': defaults or {}, 'nonce': secrets.token_hex(4), 'return_to': return_to}
         await self.prompt(update, context)
         return WAIT_FORM
 
@@ -96,7 +103,11 @@ class ProductUI:
         if form['kind'] == 'profile':
             self.db.save_profile(user_id, **form['values'])
             context.user_data.pop('form', None)
-            await self.profile(update)
+            if form.get('return_to') == 'profile_edit':
+                await self.reply(update, tr('profile_updated'))
+                await self.profile_edit(update)
+            else:
+                await self.profile(update)
         else:
             app_id = self.db.add_application(user_id, **form['values'])
             if form['values'].get('vacancy_text') and context.user_data.get('analysis'):
@@ -202,10 +213,12 @@ class ProductUI:
                 await self.reply(update, tr('choose_a_section'), self.menu(update))
             elif action == 'profile':
                 await self.profile(update)
+            elif action == 'profileedit':
+                await self.profile_edit(update)
             elif action == 'create':
                 return await self.begin_form(update, context, 'profile', PROFILE_FIELDS)
             elif action == 'edit' and parts[2] in PROFILE_FIELDS:
-                return await self.begin_form(update, context, 'profile', [parts[2]])
+                return await self.begin_form(update, context, 'profile', [parts[2]], return_to='profile_edit')
             elif action in {'skip', 'choice', 'keep'}:
                 form = context.user_data.get('form')
                 if not form or parts[2] != form['nonce']:

@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock
 import bot
 from config import Settings
 from product_ui import WAIT_FORM, WAIT_SEARCH, END
+from db import PROFILE_FIELDS
+from locales import text
 
 
 class ProductUITests(unittest.IsolatedAsyncioTestCase):
@@ -62,6 +64,59 @@ class ProductUITests(unittest.IsolatedAsyncioTestCase):
         await self.click("p:skip:" + nonce)
         self.assertIsNone(bot.db.get_profile(1))
         self.assertIn("expired", self.reply())
+
+    async def test_profile_summary_and_edit_menu_ru_en(self):
+        bot.db.save_profile(1, full_name='Test Name', desired_role='Analyst', notes='My notes')
+        for language in ('ru', 'en'):
+            bot.db.set_language(1, language)
+            await self.click('p:profile')
+            self.assertIn('Test Name', self.reply())
+            self.assertIn('Analyst', self.reply())
+            self.assertIn('My notes', self.reply())
+            rows = self.message.reply_text.call_args.kwargs['reply_markup'].inline_keyboard
+            self.assertEqual([b.callback_data for row in rows for b in row], ['p:profileedit', 'p:language', 'p:home'])
+            self.assertEqual(rows[0][0].text, text(language, 'profile_edit_button'))
+            await self.click('p:profileedit')
+            self.assertEqual(self.reply(), text(language, 'profile_edit_prompt'))
+            rows = self.message.reply_text.call_args.kwargs['reply_markup'].inline_keyboard
+            self.assertEqual([len(row) for row in rows], [2, 2, 2, 2, 1, 1])
+            self.assertEqual([b.callback_data for row in rows[:4] for b in row], ['p:edit:'+key for key in PROFILE_FIELDS])
+            for key, button in zip(PROFILE_FIELDS, [b for row in rows[:4] for b in row]):
+                self.assertEqual(button.text, text(language, 'profile_edit_'+key))
+            for navigation in rows[-2:]:
+                await self.click(navigation[0].callback_data)
+                self.assertIn('Test Name', self.reply())
+                self.assertEqual(self.message.reply_text.call_args.kwargs['reply_markup'].inline_keyboard[0][0].callback_data, 'p:profileedit')
+            await self.click('p:home')
+            self.assertEqual(self.reply(), text(language, 'choose_a_section'))
+
+    async def test_profile_edit_save_validation_and_cancel_navigation(self):
+        bot.db.save_profile(1, full_name='Original', years_experience='3')
+        for language in ('ru', 'en'):
+            bot.db.set_language(1, language)
+            await self.click('p:edit:desired_role')
+            await self.answer('New role')
+            self.assertEqual(bot.db.get_profile(1)['desired_role'], 'New role')
+            replies = [call.args[0] for call in self.message.reply_text.call_args_list]
+            self.assertIn(text(language, 'profile_updated'), replies)
+            self.assertEqual(self.reply(), text(language, 'profile_edit_prompt'))
+            await self.click('p:edit:years_experience')
+            self.assertEqual(await self.answer('invalid'), WAIT_FORM)
+            self.assertEqual(bot.db.get_profile(1)['years_experience'], '3')
+            self.assertEqual(await bot.cancel(self.update, self.context), END)
+            self.assertEqual(self.reply(), text(language, 'profile_edit_prompt'))
+            self.assertNotIn('form', self.context.user_data)
+            await self.click('p:edit:full_name')
+            rows = self.message.reply_text.call_args.kwargs['reply_markup'].inline_keyboard
+            await self.click(rows[-1][0].callback_data)
+            self.assertEqual(self.reply(), text(language, 'profile_edit_prompt'))
+            self.assertEqual(bot.db.get_profile(1)['full_name'], 'Original')
+
+    async def test_profile_creation_still_available(self):
+        await self.click('p:profile')
+        rows = self.message.reply_text.call_args.kwargs['reply_markup'].inline_keyboard
+        self.assertEqual(rows[0][0].callback_data, 'p:create')
+        self.assertEqual(await self.click('p:create'), WAIT_FORM)
 
     async def test_cv_selection_and_confirmation_deletion(self):
         first, first_path = self.cv()

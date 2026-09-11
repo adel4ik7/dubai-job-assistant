@@ -353,5 +353,18 @@
   "ap_invalid": "Check the text: subject 1–200 characters on one line; message 1–3000 characters.",
   "ap_job": "job opportunity",
   "ap_subject_default": "Application for {role}",
-  "ap_message_default": "Hello,\nPlease consider my CV for your vacancy.\nThank you."
+  "ap_message_default": "Hello,\nPlease consider my CV for your vacancy.\nThank you.",
+  "profile_edit_button": "✏️ Edit",
+  "profile_edit_prompt": "✏️ What would you like to edit?",
+  "profile_done": "✅ Done",
+  "profile_back": "⬅️ Back",
+  "profile_updated": "✅ Profile updated.",
+  "profile_edit_full_name": "👤 Full name",
+  "profile_edit_desired_role": "💼 Desired role",
+  "profile_edit_desired_salary": "💰 Desired salary",
+  "profile_edit_current_location": "📍 Current location",
+  "profile_edit_visa_status": "🪪 UAE visa status",
+  "profile_edit_years_experience": "📈 Experience",
+  "profile_edit_english_level": "🇬🇧 English level",
+  "profile_edit_notes": "📝 Notes"
 }

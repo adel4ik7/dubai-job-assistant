@@ -211,8 +211,13 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tr = product.translator(update)
+    return_to_edit = context.user_data.get('form', {}).get('return_to') == 'profile_edit'
     reset_pending(context)
     context.user_data.pop('ai_action', None)
+    if return_to_edit:
+        await update.message.reply_text(tr('cancelled'))
+        await product.profile_edit(update)
+        return ConversationHandler.END
     await update.message.reply_text(tr('cancelled'), reply_markup=product.menu(update))
     return ConversationHandler.END
 

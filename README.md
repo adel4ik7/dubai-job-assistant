@@ -279,8 +279,12 @@ are held in memory and expire when the bot restarts; completed records persist.
 Create a profile through a short field-by-field form. It stores full name, desired
 role, desired salary (include currency and period), current location, UAE visa
 status, years of experience, English level, and optional notes. Name is required;
-other fields can be skipped. View the profile and use a field's Edit button to
-change it or clear an optional value. Nothing is saved until the form completes.
+other fields can be skipped. The profile overview shows data with only Edit,
+Language and Main menu actions. Edit opens a compact two-column field menu.
+After a valid change, a confirmation appears and the field menu reopens. Done
+and Back return to the profile overview; /cancel during a field edit discards
+the change and returns to the field menu. Existing validation and optional-field
+clearing remain unchanged. Nothing is saved until the form completes.
 Years accept 0–80, including one decimal place. Salary and visa status are free
 text because currency, pay period and personal circumstances vary.
 

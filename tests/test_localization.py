@@ -190,6 +190,9 @@ class LocalizedHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.message.text = 'Продвинутый (C1)'
         await bot.product.form_received(self.update, self.context)
         self.assertEqual(bot.db.get_profile(1)['english_level'], 'Advanced (C1)')
+        self.assertEqual(self.reply(), text('ru', 'profile_edit_prompt'))
+        self.assertIn(text('ru', 'profile_updated'), [call.args[0] for call in self.message.reply_text.call_args_list])
+        await self.click('p:profile')
         self.assertIn('Продвинутый (C1)', self.reply())
         await self.click('p:edit:years_experience')
         self.message.text = 'invalid'

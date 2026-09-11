@@ -1,5 +1,19 @@
 # Dubai Job Assistant — TODO
 
+## Profile UX refactor — 2026-09-12
+- Profile overview now shows data and Edit/Language/Main menu only. New Edit screen
+  lists all eight fields in two columns, with Done and Back returning to Profile.
+- Reuses the existing profile form and validation; successful single-field edits
+  confirm the save and return to Edit. /cancel and inline Cancel discard the pending
+  edit and return to Edit. Profile creation and other form destinations are unchanged.
+- All new labels are in RU/EN catalogs. Added overview/edit/navigation/save/cancel/
+  validation/localization regressions; no database or other product module changes.
+- Verification: baseline 169 tests; final full suite 172 tests passed, including
+  real local OCR. compileall and diff checks passed. Commit title:
+  `Simplify Profile overview and add compact field editing menu`.
+- Scope follows the latest instruction: CV template restyling, collector, matcher
+  and Apply/alerts were not changed. No unfinished Profile implementation remains.
+
 ## Apply Flow foundation — 2026-09-12
 - CV Builder priority completed and pushed: foundation 7c4e87b, templates 2ce8dae.
 - Added Apply preparation from vacancy cards and application details: role/company,

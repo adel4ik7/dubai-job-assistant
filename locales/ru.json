@@ -353,5 +353,18 @@
   "ap_invalid": "Проверьте текст: тема 1–200 символов в одной строке; сообщение 1–3000 символов.",
   "ap_job": "вакансию",
   "ap_subject_default": "Отклик на {role}",
-  "ap_message_default": "Здравствуйте!\nПрошу рассмотреть моё резюме на вашу вакансию.\nСпасибо."
+  "ap_message_default": "Здравствуйте!\nПрошу рассмотреть моё резюме на вашу вакансию.\nСпасибо.",
+  "profile_edit_button": "✏️ Изменить",
+  "profile_edit_prompt": "✏️ Что изменить?",
+  "profile_done": "✅ Готово",
+  "profile_back": "⬅️ Назад",
+  "profile_updated": "✅ Профиль обновлён.",
+  "profile_edit_full_name": "👤 Имя",
+  "profile_edit_desired_role": "💼 Желаемая должность",
+  "profile_edit_desired_salary": "💰 Желаемая зарплата",
+  "profile_edit_current_location": "📍 Локация",
+  "profile_edit_visa_status": "🪪 Статус визы",
+  "profile_edit_years_experience": "📈 Опыт работы",
+  "profile_edit_english_level": "🇬🇧 Уровень английского",
+  "profile_edit_notes": "📝 Заметки"
 }
