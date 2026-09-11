@@ -29,6 +29,31 @@ and connected for Telegram polling. Only one polling process should use the toke
 
 ## Main menu
 
+### English / Русский
+
+On the first `/start`, choose **English 🇬🇧** or **Русский 🇷🇺**. The choice is
+stored in SQLite user settings, separately from profile fields. Change it with
+`/language`, the **Language / Язык** menu button, or the language button in Profile.
+Switching language cancels an unfinished form; saved data and the active CV remain.
+Existing users without a choice use English and see the selector on their next
+`/start`. Deleting all personal data also removes the language preference.
+
+Menus, forms, errors, confirmations, help, statuses, dashboards and local analysis
+reports support both languages through shared handlers. Technology names and
+user-entered company names, roles and other free text are preserved. Interface
+localization does **not** extend the matcher's English requirement vocabulary:
+English CV/vacancy text is still recommended for analysis, even with Russian UI.
+
+При первом `/start` выберите язык. Позже его можно изменить командой `/language`
+или кнопкой «Язык / Language». Все основные разделы и результаты анализа доступны
+по-русски. Пользовательские данные не переводятся. Для распознавания требований
+анализатор по-прежнему использует небольшой англоязычный словарь.
+
+Translations are in `locales/en.json` and `locales/ru.json`; recognized nontechnical
+requirement labels are in `locales/requirement_labels_ru.json`. Add matching keys
+and named placeholders to both catalogs; never run translation on arbitrary user
+values. No translation API or extra dependency is used.
+
 Use a **private chat** with the bot. The six sections are Profile, CVs, Analyse
 vacancy, Applications, Dashboard and Help. `/start` or `/menu` opens the menu;
 `/cancel` stops an unfinished form without saving it. Forms and the last analysis
@@ -79,7 +104,12 @@ Clear filters to see all records. Lists are paginated.
 
 Statuses: Saved, Applied, HR screening, Interview, Test task, Final interview,
 Offer, Rejected, Withdrawn. `/status ID STATUS` still works, including multiword
-statuses. Old `Company | Role | optional note` entry buttons remain supported.
+statuses, English/Russian labels and internal codes. The database stores only
+`saved`, `applied`, `hr_screening`, `interview`, `test_task`, `final_interview`,
+`offer`, `rejected`, `withdrawn` for new/updated statuses. Russian labels are:
+Сохранено, Отклик отправлен, Скрининг HR, Интервью, Тестовое задание,
+Финальное интервью, Оффер, Отказ, Отозвано.
+Old `Company | Role | optional note` entry buttons remain supported.
 Changing a record with no applied date to a submitted stage sets today's date.
 
 ### Dashboard
@@ -120,8 +150,10 @@ made backups or copies elsewhere**; it is not a forensic disk-erasure guarantee.
 
 On startup SQLite migration adds missing profile/active-CV tables and application
 columns without rebuilding or deleting old tables. The newest legacy CV becomes
-active; an existing active selection survives restart. Legacy notes/statuses remain
-unchanged. Old applied dates are initialized from `created_at`. Unknown old statuses
+active; an existing active selection survives restart. Notes remain unchanged.
+Migration adds nullable `users.language` and converts the nine known English status
+labels into stable internal codes. Old applied dates are initialized from `created_at`.
+Unknown old statuses
 are still visible and may be changed to one of the new statuses. Back up local data
 securely before deploying an update; owner-created backups require separate deletion.
 
@@ -164,7 +196,9 @@ Automated tests use temporary SQLite/files, synthetic tokens and mocked Telegram
 messages/provider transport. They cover old-schema migration, profile CRUD, multiple
 CVs and selection, filters, dashboard calculations, private-chat controls, forms,
 delete confirmation/cancellation, safe file deletion/retry, local analysis and
-existing features. No actual OpenAI requests occur. Offline Application construction
+existing features. Localization tests cover catalog consistency, language persistence,
+onboarding/switching, old-schema migration, localized menus/statuses/reports and
+preservation of user text. No actual OpenAI requests occur. Offline Application construction
 checks startup wiring; live Telegram polling still needs manual acceptance.
 
 Early-tester smoke test: create/edit profile; upload two sample CVs; select the first;
@@ -172,3 +206,5 @@ analyze a vacancy; compare the second; inspect both gap actions; save an applica
 change/filter/search its status; check dashboard; cancel then confirm CV deletion;
 restart and check persistence; cancel then confirm `/delete_my_data`; check that a
 second tester's records remain. Keep API features disabled.
+Repeat the main flows in both languages; change language from Profile and `/language`,
+restart to check persistence, and verify older application records remain searchable.

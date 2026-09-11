@@ -4,8 +4,7 @@ from pathlib import Path
 from typing import Any
 from datetime import date
 
-STATUSES = ("Saved", "Applied", "HR screening", "Interview", "Test task",
-            "Final interview", "Offer", "Rejected", "Withdrawn")
+from statuses import STATUSES, LEGACY_STATUSES, normalize_status
 PROFILE_FIELDS = ("full_name", "desired_role", "desired_salary", "current_location",
                   "visa_status", "years_experience", "english_level", "notes")
 
@@ -35,7 +34,7 @@ CREATE TABLE IF NOT EXISTS applications (
     telegram_id INTEGER NOT NULL,
     company TEXT NOT NULL,
     role TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'Applied',
+    status TEXT NOT NULL DEFAULT 'applied',
     notes TEXT DEFAULT '',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
@@ -86,12 +85,18 @@ class Database:
     def _init(self) -> None:
         with self._connect() as conn:
             conn.executescript(SCHEMA)
+            user_columns = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
+            if "language" not in user_columns:
+                conn.execute("ALTER TABLE users ADD COLUMN language TEXT DEFAULT NULL")
+            for code, legacy in zip(STATUSES, LEGACY_STATUSES):
+                conn.execute("UPDATE applications SET status=? WHERE status=?", (code, legacy))
+
             columns = {r["name"] for r in conn.execute("PRAGMA table_info(applications)")}
             for name in ("source", "salary", "date_applied", "vacancy_text"):
                 if name not in columns:
                     conn.execute(f"ALTER TABLE applications ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
                     if name == "date_applied":
-                        conn.execute("UPDATE applications SET date_applied=substr(created_at,1,10) WHERE status!='Saved'")
+                        conn.execute("UPDATE applications SET date_applied=substr(created_at,1,10) WHERE status!='saved'")
             conn.execute("""INSERT OR IGNORE INTO active_resumes(telegram_id,resume_id)
                             SELECT telegram_id, MAX(id) FROM resumes GROUP BY telegram_id""")
 
@@ -134,14 +139,15 @@ class Database:
             return dict(row) if row else None
 
     def add_application(self, telegram_id: int, company: str, role: str, notes: str = "", *,
-                        status: str = "Applied", source: str = "", salary: str = "",
+                        status: str = "applied", source: str = "", salary: str = "",
                         date_applied: str | None = None, vacancy_text: str = "") -> int:
+        status = normalize_status(status)
         if status not in STATUSES:
             raise ValueError("Choose a listed application status.")
         if not company.strip() or not role.strip():
             raise ValueError("Company and role are required.")
         if date_applied is None:
-            date_applied = "" if status == "Saved" else date.today().isoformat()
+            date_applied = "" if status == "saved" else date.today().isoformat()
         if date_applied:
             if date.fromisoformat(date_applied).isoformat() != date_applied:
                 raise ValueError("Use YYYY-MM-DD for date applied.")
@@ -156,6 +162,7 @@ class Database:
             return int(cur.lastrowid)
 
     def list_applications(self, telegram_id: int, limit: int = 20, *, status: str = "", search: str = "", offset: int = 0) -> list[dict[str, Any]]:
+        status = normalize_status(status)
         with self._connect() as conn:
             rows = conn.execute(
                 """
@@ -171,13 +178,14 @@ class Database:
             return [dict(r) for r in rows]
 
     def update_application_status(self, telegram_id: int, app_id: int, status: str) -> bool:
+        status = normalize_status(status)
         if status not in STATUSES:
             return False
         with self._connect() as conn:
             cur = conn.execute(
                 """
                 UPDATE applications SET status=?, date_applied=CASE
-                  WHEN date_applied='' AND ? NOT IN ('Saved', 'Withdrawn') THEN ? ELSE date_applied END
+                  WHEN date_applied='' AND ? NOT IN ('saved', 'withdrawn') THEN ? ELSE date_applied END
                 WHERE id=? AND telegram_id=?
                 """,
                 (status, status, date.today().isoformat(), app_id, telegram_id),
@@ -245,11 +253,11 @@ class Database:
             counts = {r["status"]: r["n"] for r in conn.execute(
                 "SELECT status,COUNT(*) n FROM applications WHERE telegram_id=? GROUP BY status", (telegram_id,))}
         total = sum(counts.values())
-        submitted = sum(counts.get(s, 0) for s in STATUSES if s not in {"Saved", "Withdrawn"})
-        interviews = sum(counts.get(s, 0) for s in ("Interview", "Test task", "Final interview"))
-        offers, rejections = counts.get("Offer", 0), counts.get("Rejected", 0)
+        submitted = sum(counts.get(s, 0) for s in STATUSES if s not in {"saved", "withdrawn"})
+        interviews = sum(counts.get(s, 0) for s in ("interview", "test_task", "final_interview"))
+        offers, rejections = counts.get("offer", 0), counts.get("rejected", 0)
         return {"total": total, "active": sum(counts.get(s, 0) for s in
-                ("Applied", "HR screening", "Interview", "Test task", "Final interview")),
+                ("applied", "hr_screening", "interview", "test_task", "final_interview")),
                 "interviews": interviews, "offers": offers, "rejections": rejections,
                 "submitted": submitted, "interview_rate": round(100 * interviews / submitted, 1) if submitted else 0,
                 "offer_rate": round(100 * offers / submitted, 1) if submitted else 0}
@@ -285,3 +293,20 @@ class Database:
                 (telegram_id, day, limit),
             )
             return cur.rowcount > 0
+
+    def language_selected(self, telegram_id: int) -> bool:
+        with self._connect() as conn:
+            row = conn.execute("SELECT language FROM users WHERE telegram_id=?", (telegram_id,)).fetchone()
+            return bool(row and row[0] in {"en", "ru"})
+
+    def get_language(self, telegram_id: int) -> str:
+        with self._connect() as conn:
+            row = conn.execute("SELECT language FROM users WHERE telegram_id=?", (telegram_id,)).fetchone()
+            return row[0] if row and row[0] in {"en", "ru"} else "en"
+
+    def set_language(self, telegram_id: int, language: str) -> None:
+        if language not in {"en", "ru"}:
+            raise ValueError("Unsupported language")
+        with self._connect() as conn:
+            conn.execute("INSERT OR IGNORE INTO users(telegram_id) VALUES (?)", (telegram_id,))
+            conn.execute("UPDATE users SET language=? WHERE telegram_id=?", (language, telegram_id))

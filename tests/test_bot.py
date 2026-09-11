@@ -38,7 +38,7 @@ class BotTests(unittest.IsolatedAsyncioTestCase):
         application = bot.db.list_applications(1)[0]
         self.context.args = [str(application["id"]), "Interview"]
         await bot.status_command(self.update, self.context)
-        self.assertEqual(bot.db.list_applications(1)[0]["status"], "Interview")
+        self.assertEqual(bot.db.list_applications(1)[0]["status"], "interview")
         self.assertFalse(bot.db.update_application_status(2, application["id"], "Other"))
         self.query.data = "ai_menu"
         await bot.buttons(self.update, self.context)

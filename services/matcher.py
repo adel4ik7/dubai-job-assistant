@@ -1,4 +1,6 @@
 """Offline requirement matching: a small explicit vocabulary, never word frequency."""
+from locales import requirement_label, translate_message, translator, text as locale_text
+
 import re
 import unicodedata
 from dataclasses import dataclass, replace
@@ -282,136 +284,134 @@ def deduplicate_requirements(requirements: list[Requirement]) -> list[Requiremen
     return [item for i, item in enumerate(result) if i not in removed]
 
 
-def evidence_status(requirement: Requirement, evidence: list[Requirement]) -> tuple[bool, str]:
+def evidence_status(requirement: Requirement, evidence: list[Requirement], language: str='en') -> tuple[bool, str]:
+    tr = translator(language)
     if requirement.alternatives:
-        statuses = [evidence_status(replace(requirement, key=key, alternatives=()), evidence)
-                    for key in requirement.alternatives]
+        statuses = [evidence_status(replace(requirement, key=key, alternatives=()), evidence, language) for key in requirement.alternatives]
         return next((s for s in statuses if s[0]), statuses[0])
-    if requirement.category == "experience":
-        candidates = [e for e in evidence if e.category == "experience" and
-                      (not requirement.scope or e.scope == requirement.scope or
-                       requirement.scope == "uae_experience" and e.scope == "dubai_experience")]
-        if candidates and max(e.years for e in candidates) >= requirement.years:
-            return True, "Explicit experience statement in CV"
-        return False, "Required duration / relevant experience not confirmed in CV"
+    if requirement.category == 'experience':
+        candidates = [e for e in evidence if e.category == 'experience' and (not requirement.scope or e.scope == requirement.scope or (requirement.scope == 'uae_experience' and e.scope == 'dubai_experience'))]
+        if candidates and max((e.years for e in candidates)) >= requirement.years:
+            return (True, tr('analysis_explicit_experience_statement_in_cv'))
+        return (False, tr('analysis_required_duration_relevant_experience_not_confirmed_in_'))
     candidates = [e for e in evidence if e.key == requirement.key]
-    if requirement.key == "degree":
-        candidates += [e for e in evidence if e.key in {"bachelor", "master", "phd"}]
-    if requirement.key == "sql":
-        candidates += [e for e in evidence if e.key in {"postgresql", "mysql", "sql_server"}]
-    if requirement.key == "uae":
-        candidates += [e for e in evidence if e.key in {"dubai", "abu_dhabi"}]
-    if requirement.category == "education" and requirement.scope:
+    if requirement.key == 'degree':
+        candidates += [e for e in evidence if e.key in {'bachelor', 'master', 'phd'}]
+    if requirement.key == 'sql':
+        candidates += [e for e in evidence if e.key in {'postgresql', 'mysql', 'sql_server'}]
+    if requirement.key == 'uae':
+        candidates += [e for e in evidence if e.key in {'dubai', 'abu_dhabi'}]
+    if requirement.category == 'education' and requirement.scope:
         candidates = [e for e in candidates if e.scope == requirement.scope]
-    if candidates and (not requirement.advanced or any(e.advanced for e in candidates)):
-        return True, "Mentioned in CV; verify proficiency and context"
+    if candidates and (not requirement.advanced or any((e.advanced for e in candidates))):
+        return (True, tr('analysis_mentioned_in_cv_verify_proficiency_and_context'))
     if candidates:
-        return False, "Mentioned, but requested proficiency is not confirmed"
-    return False, "Not confirmed in CV (not proof the candidate lacks it)"
+        return (False, tr('analysis_mentioned_but_requested_proficiency_is_not_confirmed'))
+    return (False, tr('analysis_not_confirmed_in_cv_not_proof_the_candidate_lacks_it'))
 
 
-def analyse_match(resume_text: str, vacancy_text: str) -> dict:
+def analyse_match(resume_text: str, vacancy_text: str, language: str='en') -> dict:
+    tr = translator(language)
     requirements = extract_requirements(vacancy_text)
     evidence = extract_requirements(resume_text, cv=True)
     rows = []
     for requirement in requirements:
         matched, reason = evidence_status(requirement, evidence)
-        rows.append({"key": requirement.key, "label": requirement.label,
-                     "category": requirement.category, "optional": requirement.optional,
-                     "matched": matched, "reason": reason})
+        rows.append({'key': requirement.key, 'label': requirement_label(language, requirement.label, requirement.category), 'label_en': requirement.label, 'category': requirement.category, 'optional': requirement.optional, 'matched': matched, 'reason': translate_message(language, reason), 'reason_en': reason})
     category_scores = {}
-    group_fractions, effective_weights = {}, {}
+    group_fractions, effective_weights = ({}, {})
     for group, weight in WEIGHTS.items():
-        members = [r for r in rows if (r["category"] in {"languages", "location"}
-                   if group == "languages_location" else r["category"] == group)]
+        members = [r for r in rows if (r['category'] in {'languages', 'location'} if group == 'languages_location' else r['category'] == group)]
         if not members:
             continue
-        denominator = sum(0.25 if r["optional"] else 1 for r in members)
-        numerator = sum((0.25 if r["optional"] else 1) for r in members if r["matched"])
-        # A purely optional category must not outweigh a mandatory category.
-        effective_weight = weight * (0.25 if all(r["optional"] for r in members) else 1)
+        denominator = sum((0.25 if r['optional'] else 1 for r in members))
+        numerator = sum((0.25 if r['optional'] else 1 for r in members if r['matched']))
+        effective_weight = weight * (0.25 if all((r['optional'] for r in members)) else 1)
         category_scores[group] = round(100 * numerator / denominator)
         group_fractions[group] = numerator / denominator
         effective_weights[group] = effective_weight
-    # Renormalizing sparse vacancies must not turn the nominal 5% soft-skill
-    # budget into a 20-50% penalty. Cap the entire group at 5% after normalization.
-    core_weight = sum(weight for group, weight in effective_weights.items() if group != "soft_skills")
-    if "soft_skills" in effective_weights:
-        effective_weights["soft_skills"] = min(effective_weights["soft_skills"], core_weight * 5 / 95)
+    core_weight = sum((weight for group, weight in effective_weights.items() if group != 'soft_skills'))
+    if 'soft_skills' in effective_weights:
+        effective_weights['soft_skills'] = min(effective_weights['soft_skills'], core_weight * 5 / 95)
     active_weight = sum(effective_weights.values())
-    total = sum(effective_weights[group] * fraction for group, fraction in group_fractions.items())
+    total = sum((effective_weights[group] * fraction for group, fraction in group_fractions.items()))
     breakdown = {}
     for category in CATEGORY_LABELS:
-        members = [r for r in rows if r["category"] == category]
-        denominator = sum(0.25 if r["optional"] else 1 for r in members)
-        numerator = sum(0.25 if r["optional"] else 1 for r in members if r["matched"])
+        members = [r for r in rows if r['category'] == category]
+        denominator = sum((0.25 if r['optional'] else 1 for r in members))
+        numerator = sum((0.25 if r['optional'] else 1 for r in members if r['matched']))
         breakdown[category] = round(100 * numerator / denominator) if denominator else None
-    strong = [r for r in rows if r["matched"]]
-    important = [r for r in rows if not r["matched"] and not r["optional"]]
-    optional = [r for r in rows if not r["matched"] and r["optional"]]
+    strong = [r for r in rows if r['matched']]
+    important = [r for r in rows if not r['matched'] and (not r['optional'])]
+    optional = [r for r in rows if not r['matched'] and r['optional']]
+    recommendations = build_recommendations(strong, important, optional, language)
+    return {'score': round(total / active_weight * 100) if active_weight else None, 'requirements': rows, 'category_scores': category_scores, 'breakdown': breakdown, 'effective_weights': {k: round(100 * v / active_weight, 4) if active_weight else 0 for k, v in effective_weights.items()}, 'strong_matches': strong, 'important_gaps': important, 'optional_gaps': optional, 'matched': [r['label'] for r in strong], 'missing': [r['label'] for r in important + optional], 'suggestions': recommendations, 'coverage_note': tr('analysis_based_only_on_recognized_requirements_in_a_small_englis')}
+
+
+def build_recommendations(strong, important, optional, language='en'):
+    tr = translator(language)
     recommendations = []
     if strong:
-        recommendations.append("Highlight existing CV evidence for " + ", ".join(r["label"] for r in strong[:3]) + "; keep the original facts and proficiency level.")
-    # One recommendation per category avoids repeating the same advice for every skill.
+        recommendations.append(tr('analysis_highlight_existing_cv_evidence_for') + ', '.join((r['label'] for r in strong[:3])) + tr('analysis_keep_the_original_facts_and_proficiency_level'))
     grouped_important = []
     for category in CATEGORY_LABELS:
-        members = [r for r in important if r["category"] == category]
+        members = [r for r in important if r['category'] == category]
         if members:
-            grouped_important.append({"category": category, "label": compact_labels(members, 3)})
+            grouped_important.append({'category': category, 'label': compact_labels(members, 3, language)})
     for row in grouped_important[:3]:
-        if row["category"] == "experience":
-            advice = "Compare the requested duration with your actual dated roles; do not round up or count unrelated work."
-        elif row["category"] == "education":
-            advice = "Check the credential requirement; an unfinished course is not a completed qualification."
-        elif row["category"] == "location":
-            advice = "Check eligibility with the employer; past work or relocation interest does not establish current location or visa status."
-        elif row["category"] == "languages":
-            advice = "Assess your actual language level against the vacancy; do not claim unverified fluency."
+        if row['category'] == 'experience':
+            advice = tr('analysis_compare_the_requested_duration_with_your_actual_dated_r')
+        elif row['category'] == 'education':
+            advice = tr('analysis_check_the_credential_requirement_an_unfinished_course_i')
+        elif row['category'] == 'location':
+            advice = tr('analysis_check_eligibility_with_the_employer_past_work_or_reloca')
+        elif row['category'] == 'languages':
+            advice = tr('analysis_assess_your_actual_language_level_against_the_vacancy_d')
         else:
-            advice = "No sufficient CV evidence was found. Consider learning or practice before claiming this capability."
-        recommendations.append(row["label"] + ": " + advice)
+            advice = tr('analysis_no_sufficient_cv_evidence_was_found_consider_learning_o')
+        recommendations.append(row['label'] + ': ' + advice)
     if optional:
-        recommendations.append("Lower priority: " + ", ".join(r["label"] for r in optional[:3]) + ". Treat these as optional development goals, not existing qualifications.")
-    return {"score": round(total / active_weight * 100) if active_weight else None,
-            "requirements": rows, "category_scores": category_scores, "breakdown": breakdown,
-            "effective_weights": {k: round(100 * v / active_weight, 4) if active_weight else 0
-                                  for k, v in effective_weights.items()},
-            "strong_matches": strong, "important_gaps": important, "optional_gaps": optional,
-            "matched": [r["label"] for r in strong], "missing": [r["label"] for r in important + optional],
-            "suggestions": recommendations,
-            "coverage_note": "Based only on recognized requirements in a small English-language dictionary. Unrecognized requirements need manual review."}
+        recommendations.append(tr('analysis_lower_priority') + ', '.join((r['label'] for r in optional[:3])) + tr('analysis_treat_these_as_optional_development_goals_not_existing_'))
+    return recommendations
 
 
-def compact_labels(rows: list[dict], limit: int = 4) -> str:
-    labels = list(dict.fromkeys(row["label"] for row in rows))
-    text = "; ".join(labels[:limit])
+def compact_labels(rows: list[dict], limit: int=4, language: str='en') -> str:
+    tr = translator(language)
+    labels = list(dict.fromkeys((row['label'] for row in rows)))
+    text = '; '.join(labels[:limit])
     if len(labels) > limit:
-        text += f"; +{len(labels) - limit} more"
+        text += tr("analysis_more", count=len(labels) - limit)
     return text
 
 
-def format_analysis(result: dict) -> str:
-    score = f"{result['score']}%" if result["score"] is not None else "N/A — insufficient non-soft requirements"
-    lines = [f"📊 Overall match score: {score}", ""]
-    lines.append("Breakdown (recognized CV evidence)")
+def format_analysis(result: dict, language: str='en') -> str:
+    tr = translator(language)
+    result = dict(result)
+    for section in ('strong_matches', 'important_gaps', 'optional_gaps'):
+        result[section] = [dict(row, label=requirement_label(language, row.get('label_en', row['label']), row['category']),
+                                 reason=translate_message(language, row.get('reason_en', row['reason']))) for row in result[section]]
+    result['suggestions'] = build_recommendations(result['strong_matches'], result['important_gaps'], result['optional_gaps'], language)
+    result['coverage_note'] = tr('analysis_based_only_on_recognized_requirements_in_a_small_englis')
+
+    score = f"{result['score']}%" if result['score'] is not None else tr('analysis_n_a_insufficient_non_soft_requirements')
+    lines = [tr('analysis_overall_match_score_v0', v0=score), '']
+    lines.append(tr('analysis_breakdown_recognized_cv_evidence'))
     for category, label in CATEGORY_LABELS.items():
-        value = result["breakdown"][category]
-        label = {"tools": "Tools", "location": "Location", "education": "Education"}.get(category, label)
-        lines.append(f"{label}: {str(value) + '%' if value is not None else 'N/A'}")
-    lines.append("")
-    for title, key in (("✅ Strong matches", "strong_matches"), ("⚠️ Important gaps", "important_gaps"), ("▫️ Optional gaps", "optional_gaps")):
+        value = result['breakdown'][category]
+        label = locale_text(language, 'breakdown_' + category)
+        lines.append(f"{label}: {(str(value) + '%' if value is not None else tr('analysis_n_a'))}")
+    lines.append('')
+    for title, key in ((tr('analysis_strong_matches'), 'strong_matches'), (tr('analysis_important_gaps'), 'important_gaps'), (tr('analysis_optional_gaps'), 'optional_gaps')):
         rows = result[key]
         lines.append(title)
         for category, label in CATEGORY_LABELS.items():
-            members = [r for r in rows if r["category"] == category]
+            members = [r for r in rows if r['category'] == category]
             if members:
-                lines.append(f"• {label}: {compact_labels(members)}")
+                lines.append(f"• {locale_text(language, 'category_' + category)}: {compact_labels(members, language=language)}")
         if not rows:
-            lines.append("• None identified")
-        lines.append("")
-    lines.append("🛠 Recommendations")
-    lines.extend("• " + s for s in result["suggestions"])
-    lines.extend(["", "Gaps mean insufficient CV evidence, including duration or proficiency. N/A means no requirements to assess. Never add skills, experience or credentials you do not have.",
-                  result["coverage_note"], "Related items are grouped; +N indicates additional items. Weights: hard skills 35, tools 20, experience 20, education 10, languages/location 10. Absent groups are excluded; optional requirements have quarter weight. Soft skills contribute at most 5% overall.",
-                  "This is a heuristic score, not an official ATS score and not an ATS guarantee."])
-    return "\n".join(lines)
+            lines.append(tr('analysis_none_identified'))
+        lines.append('')
+    lines.append(tr('analysis_recommendations'))
+    lines.extend(('• ' + s for s in result['suggestions']))
+    lines.extend(['', tr('analysis_gaps_mean_insufficient_cv_evidence_including_duration_o'), result['coverage_note'], tr('analysis_related_items_are_grouped_n_indicates_additional_items_'), tr('analysis_this_is_a_heuristic_score_not_an_official_ats_score_and')])
+    return '\n'.join(lines)

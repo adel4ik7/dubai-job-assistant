@@ -1,5 +1,49 @@
 # Dubai Job Assistant — TODO
 
+## Current checkpoint — RU/EN localization (2026-09-11)
+
+- [x] Persistent `users.language` settings (`en`/`ru`), English fallback for old users.
+- [x] First `/start` language selector; later `/language`, main menu and Profile buttons.
+- [x] Shared handlers with external EN/RU catalogs for all menus, forms, validation,
+  confirmations, errors, help, onboarding, status labels and disabled AI fallback.
+- [x] Localized analysis reports, reasons, recommendations, profile/important gaps;
+  unchanged score logic, technology names and arbitrary user-entered text.
+- [x] Stable internal application statuses and idempotent migration of nine old labels;
+  filters, dashboard and old `/status` inputs remain compatible. Unknown old values remain.
+- [x] Automated catalog, persistence, migration, language-change and shared UI tests.
+- [x] README updated with language flows, migration and English-recognizer limitation.
+- [ ] Live Telegram acceptance in RU and EN with two testers (requires owner's setup).
+
+### Exact state / continuation
+- Runtime localization: `locales/__init__.py`, `en.json`, `ru.json`,
+  `requirement_labels_ru.json`. `bot.make_main_menu` and `ProductUI` resolve the
+  stored language on each request; no duplicated language-specific handlers.
+- `db.py` adds nullable language without overwriting existing users. Unselected users
+  receive English fallback and choose on `/start`. `statuses.py` normalizes stable
+  codes and EN/RU inputs; migration rewrites only recognized old English status labels.
+- Changing language cancels pending forms/confirmations but preserves saved data and
+  analysis context. Privacy deletion removes language together with the user row.
+- `services/matcher.py` accepts optional `language='en'`; report rendering can change
+  language independently of matching. English defaults preserve existing callers.
+  The requirement recognizer remains English; RU interface does not imply Russian CV
+  recognition. Free-text profile location/visa still needs conservative manual review.
+- Verification: 87 automated tests passed (75 existing + 12 localization tests).
+  Tests use temporary SQLite/files and mocked Telegram/provider transport. No live
+  polling, OpenAI requests, paid services or real user data changes during development.
+- Final checks passed: full unittest suite, `python -m compileall .`, `pip check`,
+  git diff whitespace check. Use `.\.venv\Scripts\python.exe` for Python in this
+  environment. Offline startup wiring is covered by the real Application construction
+  tests; live Telegram polling remains a manual acceptance step.
+- Next action: run the bot with the locally configured Telegram token; test first
+  language selection, Profile -> Language, `/language`, CV upload/selection, report,
+  save/status/filter/search/dashboard, then cancel/confirm deletion in each language.
+  Restart and check persisted language and legacy applications. Keep AI disabled.
+- No incomplete implementation remains. Commit title:
+  `Add RU EN localization and stable application statuses`.
+
+Earlier checkpoints below describe historical states; this checkpoint supersedes
+their English-only UI and legacy-status storage descriptions.
+
 ## v0.3 — product usability and user profile (2026-09-11 checkpoint)
 - [x] Profile create/view/edit: all eight fields, validation and cancellable forms.
 - [x] Multiple CV list/pagination, persistent active CV, individual confirmed deletion.

@@ -88,7 +88,7 @@ class ProductUITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(record["salary"], "AED 12000/month")
         self.assertEqual(record["date_applied"], "")
         await self.click(f"p:setstatus:{record['id']}:3")
-        self.assertEqual(bot.db.get_application(1, record["id"])["status"], "Interview")
+        self.assertEqual(bot.db.get_application(1, record["id"])["status"], "interview")
         await self.click("p:filterstatus:3")
         self.assertEqual(await self.click("p:search"), WAIT_SEARCH)
         self.message.text = "acme"
