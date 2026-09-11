@@ -286,6 +286,37 @@ text because currency, pay period and personal circumstances vary.
 
 ### CVs
 
+### Create CV / Создать CV
+
+The local CV Builder saves each answer in an owner-scoped SQLite draft. Fill personal
+details, summary, multiple experience/education entries, skills, languages,
+certifications, links and an optional photo. Skip clears a field; Keep retains it.
+Dates accept YYYY or YYYY-MM, with an explicit Present option for current employment.
+Save draft and exit, then Continue draft resumes the pending step after a restart.
+Edit opens individual sections; experience/education support adding, editing and
+confirmed removal. Draft lists are paginated. Duplicate creates an independent copy.
+
+PDF and editable DOCX exports require a name and target role; absent fields and empty
+sections are omitted. Nothing is invented. Filenames use `FirstName_LastName_CV`.
+The local PDF renderer embeds Arial on Windows (DejaVu Sans on Linux, Arial on macOS)
+for Cyrillic support; no Office/LibreOffice installation is needed for generation.
+Install updated requirements, including ReportLab. Photos are optional, limited to
+5 MB / 20 megapixels, resized locally and stored without EXIF metadata inside the
+draft. No raw CV or photo content is logged.
+
+Set as active CV creates/refreshes a generated DOCX in the existing CV system and
+passes factual text to the heuristic vacancy matcher. Active CV is a snapshot:
+repeat this action after editing. Existing uploaded CVs stay available. Deleting a
+draft also removes its linked generated CV; `/delete_my_data` removes drafts/photos
+and generated local files, while previously downloaded Telegram copies remain.
+
+Architecture: `services/cv_builder.py` owns drafts and provides `CVAttachment`
+(filename, MIME type, bytes) for a future explicit Apply/attach flow. No email is
+sent. `services/cv_export.py` maps factual data into document blocks and renders them;
+`templates/` holds template settings separately from Telegram/business logic.
+
+### Uploaded CVs
+
 Upload PDF, DOCX or TXT files up to 5 MB. Each successful upload is a separate CV
 with a unique local filename and becomes active. The CV list marks the active CV
 with a star; use a CV's buttons to activate it or delete it after confirmation.

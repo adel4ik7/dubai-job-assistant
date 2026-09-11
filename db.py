@@ -13,6 +13,15 @@ PROFILE_FIELDS = ("full_name", "desired_role", "desired_salary", "current_locati
 SCHEMA = """
 PRAGMA journal_mode=WAL;
 
+CREATE TABLE IF NOT EXISTS cv_drafts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_id INTEGER NOT NULL,
+    data_json TEXT NOT NULL DEFAULT '{}',
+    resume_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS users (
     telegram_id INTEGER PRIMARY KEY,
     username TEXT,
@@ -280,7 +289,7 @@ class Database:
     def delete_user_records(self, telegram_id: int) -> None:
         with self._connect() as conn:
             conn.execute('DELETE FROM user_saved_vacancies WHERE user_id=?', (telegram_id,))
-            for table in ("profiles", "active_resumes", "resumes", "applications", "ai_usage", "users"):
+            for table in ("cv_drafts", "profiles", "active_resumes", "resumes", "applications", "ai_usage", "users"):
                 conn.execute(f"DELETE FROM {table} WHERE telegram_id=?", (telegram_id,))
 
     def reserve_ai_attempt(self, telegram_id: int, day: str, limit: int) -> bool:

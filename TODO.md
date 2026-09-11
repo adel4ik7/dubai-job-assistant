@@ -1,5 +1,17 @@
 # Dubai Job Assistant — TODO
 
+## CV Builder foundation — 2026-09-11
+- Persistent owner-scoped structured drafts, resumable per-answer wizard, section
+  editing, repeated experience/education, photo handling, clone and confirmed delete.
+- Local PDF/DOCX attachments, sanitized filenames, empty-field omission, active CV
+  snapshot integration and privacy deletion. No generated facts or external services.
+- RU/EN UI, isolated template/export layer and future attachment data interface.
+- Foundation verification: all 157 tests and compileall passed.
+  Synthetic PDF and DOCX visually checked, including two pages and
+  Cyrillic. Word used only for QA because LibreOffice is absent, not at runtime.
+- Next authorized milestone: Modern/Professional/Classic ATS templates and separate
+  RU/EN document versions, with long-content and extraction regression tests.
+
 ## RU/EN profession search — 2026-09-11
 - Added isolated offline dictionary in services/vacancy_search.py with all requested
   profession groups, symmetric RU/EN expansion, punctuation/hyphen/space normalization

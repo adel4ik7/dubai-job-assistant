@@ -10,6 +10,7 @@ from config import Settings, load_settings
 from db import Database, STATUSES
 from product_ui import ProductUI, WAIT_FORM, WAIT_SEARCH
 from vacancy_ui import VacancyUI, WAIT_VACANCY_INPUT
+from cv_builder_ui import CVBuilderUI, WAIT_CV_BUILDER
 from services.ai import AIError, AIService, OpenAIProvider, TASKS, message_chunks
 from services.matcher import analyse_match, format_analysis
 from services.resume_parser import ResumeParseError, extract_text
@@ -28,6 +29,7 @@ WAIT_AI_VACANCY = 3
 def make_main_menu(language='en'):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(locale_text(language, 'menu_profile'), callback_data='p:profile'), InlineKeyboardButton(locale_text(language, 'menu_cvs'), callback_data='p:cvs:0')],
+        [InlineKeyboardButton(locale_text(language, 'cb_menu'), callback_data='cb:home')],
         [InlineKeyboardButton(locale_text(language, 'menu_analyse'), callback_data='analyse_vacancy')],
         [InlineKeyboardButton(locale_text(language, 'v_menu'), callback_data='v:home')],
         [InlineKeyboardButton(locale_text(language, 'menu_applications'), callback_data='p:apps:0'), InlineKeyboardButton(locale_text(language, 'menu_dashboard'), callback_data='p:dashboard')],
@@ -74,6 +76,8 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await query.message.reply_text(tr('please_use_a_private_chat_with_the_bot'))
         return ConversationHandler.END
     await ensure_user(update)
+    if query.data.startswith('cb:'):
+        return await builder_ui.buttons(update, context)
     if query.data.startswith('v:'):
         reset_pending(context)
         return await vacancies.buttons(update, context)
@@ -242,7 +246,7 @@ async def ai_vacancy_received(update: Update, context: ContextTypes.DEFAULT_TYPE
     return await run_ai(update, context, action, vacancy)
 
 def reset_pending(context) -> None:
-    for key in ('form', 'delete_confirmation', 'cv_delete', 'ai_action', 'vacancy_input'):
+    for key in ('form', 'delete_confirmation', 'cv_delete', 'ai_action', 'vacancy_input', 'builder_form', 'builder_delete'):
         context.user_data.pop(key, None)
 
 def cleanup_failed_upload(path: Path) -> None:
@@ -257,11 +261,12 @@ async def cv_received(update, context):
     return ConversationHandler.END
 
 def build_application(config: Settings | None=None) -> Application:
-    global settings, db, ai, product, vacancies
+    global settings, db, ai, product, vacancies, builder_ui
     settings = config or load_settings()
     db = Database(settings.database_path)
     ai = AIService(None, db, settings.ai_daily_limit)
     product = ProductUI(db, settings.uploads_dir, make_main_menu)
+    builder_ui = CVBuilderUI(product)
     vacancies = VacancyUI(product, settings.vacancy_match_window, settings.admin_telegram_id)
     app = Application.builder().token(settings.telegram_bot_token).concurrent_updates(False).build()
     conversation = ConversationHandler(
@@ -275,6 +280,7 @@ def build_application(config: Settings | None=None) -> Application:
             MessageHandler(filters.Document.ALL & filters.ChatType.PRIVATE, cv_received),
         ],
         states={
+            WAIT_CV_BUILDER: [MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND & filters.ChatType.PRIVATE, builder_ui.receive)],
             WAIT_VACANCY_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, vacancies.input_received)],
             WAIT_FORM: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, product.form_received)],
             WAIT_SEARCH: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, product.search_received)],
