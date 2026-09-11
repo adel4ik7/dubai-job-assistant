@@ -359,6 +359,25 @@ names the CV used and offers four follow-up actions:
 
 ### Applications
 
+### Apply preparation (no email sending)
+
+Open **Apply — prepare / Откликнуться — подготовить** on a vacancy card or an
+application's detail screen. The review shows role, company, extracted recipient
+email (or an explicit missing-email message), selected CV, suggested subject and
+editable message. Change the CV without changing your global active-CV selection.
+Only literal email evidence from the vacancy is used; no employer address is guessed.
+
+**Confirm — save only** stores an owner-scoped preparation in SQLite. It sends no
+email and does not change the tracker status or applied date. Repeat confirmations
+update the same preparation. Reopen Apply to review saved text. Cancel, /cancel or
+leaving this screen discards unconfirmed edits; previously confirmed preparation
+remains. Confirmation rechecks CV ownership/availability and changed vacancy details.
+Missing email is allowed in a saved preparation, but remains explicitly flagged.
+`/delete_my_data` also removes these records. No SMTP credentials, server setup or
+email provider is needed. The module is a foundation for future explicit sending.
+
+### Application tracking
+
 Add records through the Applications form. Fields: company, role, status, source,
 salary if known, date applied (YYYY-MM-DD; blank if unknown/not applied), and notes.
 Open a record to see its details or change status. Search by company or role;

@@ -22,6 +22,22 @@ CREATE TABLE IF NOT EXISTS cv_drafts (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS apply_preparations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_id INTEGER NOT NULL,
+    origin_kind TEXT NOT NULL,
+    origin_id INTEGER NOT NULL,
+    role TEXT,
+    company TEXT,
+    recipient_email TEXT,
+    resume_id INTEGER NOT NULL,
+    subject TEXT NOT NULL,
+    message TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'prepared',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(telegram_id, origin_kind, origin_id)
+);
+
 CREATE TABLE IF NOT EXISTS users (
     telegram_id INTEGER PRIMARY KEY,
     username TEXT,
@@ -289,7 +305,7 @@ class Database:
     def delete_user_records(self, telegram_id: int) -> None:
         with self._connect() as conn:
             conn.execute('DELETE FROM user_saved_vacancies WHERE user_id=?', (telegram_id,))
-            for table in ("cv_drafts", "profiles", "active_resumes", "resumes", "applications", "ai_usage", "users"):
+            for table in ("apply_preparations", "cv_drafts", "profiles", "active_resumes", "resumes", "applications", "ai_usage", "users"):
                 conn.execute(f"DELETE FROM {table} WHERE telegram_id=?", (telegram_id,))
 
     def reserve_ai_attempt(self, telegram_id: int, day: str, limit: int) -> bool:

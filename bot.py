@@ -11,6 +11,7 @@ from db import Database, STATUSES
 from product_ui import ProductUI, WAIT_FORM, WAIT_SEARCH
 from vacancy_ui import VacancyUI, WAIT_VACANCY_INPUT
 from cv_builder_ui import CVBuilderUI, WAIT_CV_BUILDER
+from apply_ui import ApplyUI, WAIT_APPLY
 from services.ai import AIError, AIService, OpenAIProvider, TASKS, message_chunks
 from services.matcher import analyse_match, format_analysis
 from services.resume_parser import ResumeParseError, extract_text
@@ -76,6 +77,12 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await query.message.reply_text(tr('please_use_a_private_chat_with_the_bot'))
         return ConversationHandler.END
     await ensure_user(update)
+    if query.data.startswith('ap:'):
+        for key in ('builder_form', 'builder_delete', 'form', 'ai_action', 'vacancy_input'):
+            context.user_data.pop(key, None)
+        return await apply_ui.buttons(update, context)
+    for key in ('apply_draft', 'apply_token', 'apply_field'):
+        context.user_data.pop(key, None)
     if query.data.startswith('cb:'):
         return await builder_ui.buttons(update, context)
     if query.data.startswith('v:'):
@@ -246,7 +253,7 @@ async def ai_vacancy_received(update: Update, context: ContextTypes.DEFAULT_TYPE
     return await run_ai(update, context, action, vacancy)
 
 def reset_pending(context) -> None:
-    for key in ('form', 'delete_confirmation', 'cv_delete', 'ai_action', 'vacancy_input', 'builder_form', 'builder_delete'):
+    for key in ('form', 'delete_confirmation', 'cv_delete', 'ai_action', 'vacancy_input', 'builder_form', 'builder_delete', 'apply_draft', 'apply_token', 'apply_field'):
         context.user_data.pop(key, None)
 
 def cleanup_failed_upload(path: Path) -> None:
@@ -261,12 +268,13 @@ async def cv_received(update, context):
     return ConversationHandler.END
 
 def build_application(config: Settings | None=None) -> Application:
-    global settings, db, ai, product, vacancies, builder_ui
+    global settings, db, ai, product, vacancies, builder_ui, apply_ui
     settings = config or load_settings()
     db = Database(settings.database_path)
     ai = AIService(None, db, settings.ai_daily_limit)
     product = ProductUI(db, settings.uploads_dir, make_main_menu)
     builder_ui = CVBuilderUI(product)
+    apply_ui = ApplyUI(product)
     vacancies = VacancyUI(product, settings.vacancy_match_window, settings.admin_telegram_id)
     app = Application.builder().token(settings.telegram_bot_token).concurrent_updates(False).build()
     conversation = ConversationHandler(
@@ -280,6 +288,7 @@ def build_application(config: Settings | None=None) -> Application:
             MessageHandler(filters.Document.ALL & filters.ChatType.PRIVATE, cv_received),
         ],
         states={
+            WAIT_APPLY: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, apply_ui.receive)],
             WAIT_CV_BUILDER: [MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND & filters.ChatType.PRIVATE, builder_ui.receive)],
             WAIT_VACANCY_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, vacancies.input_received)],
             WAIT_FORM: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, product.form_received)],

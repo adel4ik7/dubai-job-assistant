@@ -1,5 +1,29 @@
 # Dubai Job Assistant — TODO
 
+## Apply Flow foundation — 2026-09-12
+- CV Builder priority completed and pushed: foundation 7c4e87b, templates 2ce8dae.
+- Added Apply preparation from vacancy cards and application details: role/company,
+  literal extracted email or explicit missing-email label, owner-selected CV,
+  suggested subject, editable message, review/Confirm/Cancel in RU/EN.
+- Confirm saves only to apply_preparations with unique owner/origin key; no email
+  transport, automatic application/status/date update or notification sending.
+  Rechecks source details and CV availability; stale callbacks are refused.
+- Cancel/navigation discards unconfirmed edits; confirmed preparations reopen.
+  Privacy deletion removes preparations. No secrets/configuration changes.
+- Added service/UI regressions for no-network confirmation, idempotence, missing
+  email, editable text, owner checks, deleted CV, changed source and privacy.
+- Final verification passed: all 169 tests including real local OCR, compileall,
+  pip check and diff check. Audit found zero tracked/unignored private-data paths
+  and zero files containing configured secret values. Commit title:
+  `Add local-only Apply preparation with editable message and CV selection`.
+- Next milestone (not started in this session): Job Alerts preview foundation.
+  Begin with new services/job_alerts.py: validated preferences and a pure bounded
+  candidate matcher reusing services/vacancy_search.py. Add owner-scoped preferences
+  and unique (user_id,vacancy_id) preview/delivery history in db.py, admin-only preview
+  entry point and tests/test_job_alerts.py; no automatic dispatch before rate limits.
+  First continuation command: `.\.venv\Scripts\python.exe -m unittest discover -s tests -q`.
+  Keep OpenAI, paid services, email delivery and server setup disabled.
+
 ## CV templates and language versions — 2026-09-12
 - Audit: main branch, GitHub origin verified; four configured sources enabled.
   Existing offline search/matcher/OCR and private user records preserved.

@@ -85,7 +85,8 @@ class VacancyUI:
         saved = self.store.is_saved(update.effective_user.id, vacancy['id'])
         rows = [[InlineKeyboardButton(tr('v_analyse'), callback_data=f"v:analyse:{vacancy['id']}")],
                 [InlineKeyboardButton(tr('v_remove' if saved else 'v_save'), callback_data=f"v:{'remove' if saved else 'save'}:{vacancy['id']}")],
-                [InlineKeyboardButton(tr('v_convert'), callback_data=f"v:convert:{vacancy['id']}")]]
+                [InlineKeyboardButton(tr('v_convert'), callback_data=f"v:convert:{vacancy['id']}")],
+                [InlineKeyboardButton(tr('ap_apply'), callback_data=f"ap:vacancy:{vacancy['id']}")]]
         if vacancy['source_url']:
             rows.insert(0, [InlineKeyboardButton(tr('v_open'), url=vacancy['source_url'])])
         if nonce:

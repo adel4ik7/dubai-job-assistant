@@ -33,7 +33,7 @@ class ProductUI:
 
     async def language_menu(self, update, context):
         tr = self.translator(update)
-        for key in ('form', 'cv_delete', 'delete_confirmation', 'ai_action', 'vacancy_input', 'builder_form', 'builder_delete'):
+        for key in ('form', 'cv_delete', 'delete_confirmation', 'ai_action', 'vacancy_input', 'builder_form', 'builder_delete', 'apply_draft', 'apply_token', 'apply_field'):
             context.user_data.pop(key, None)
         await self.reply(update, tr('language_prompt'), keyboard([
             [(tr('language_en'), 'p:lang:en')], [(tr('language_ru'), 'p:lang:ru')]]))
@@ -262,7 +262,7 @@ class ProductUI:
                     text = tr('application_v0', v0=app['id']) + '\n'.join((f"{label}: {value_label(self.language(update), key, app[key]) or tr('not_specified')}" for key, label in field_labels(self.language(update), APP_LABELS).items()))
                     if app.get('source_url'):
                         text += '\n' + tr('field_source_url') + ': ' + app['source_url']
-                    await self.reply(update, text, keyboard([[(tr('change_status'), f"p:status:{app['id']}")], [(tr('back'), 'p:apps:0')]]))
+                    await self.reply(update, text, keyboard([[(tr('change_status'), f"p:status:{app['id']}")], [(tr('ap_apply'), f"ap:application:{app['id']}")], [(tr('back'), 'p:apps:0')]]))
                 else:
                     await self.reply(update, tr('application_not_found'))
             elif action == 'status':
