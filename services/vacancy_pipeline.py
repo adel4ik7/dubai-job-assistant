@@ -12,6 +12,7 @@ from services.ocr import preprocess, cleanup_text
 from services.vacancy_dedup import content_hash
 from services.vacancy_detector import detect_vacancy
 from services.vacancy_parser import parse_vacancy
+from services.collector_diagnostics import Diagnostics
 
 log = logging.getLogger('collector')
 
@@ -41,31 +42,59 @@ def analyze_text(raw, ocr=''):
 
 
 class VacancyPipeline:
-    def __init__(self, settings, engine=None):
+    def __init__(self, settings, engine=None, diagnostics=None):
         self.settings, self.engine = settings, engine
+        self.diagnostics = diagnostics or Diagnostics()
 
     async def __call__(self, client, source, message):
         raw = getattr(message, 'message', '') or ''
+        raw = raw if isinstance(raw, str) else ''
         ocr, ocr_status = '', 'not_needed'
         photo = getattr(message, 'photo', None)
         document = getattr(message, 'document', None)
         is_image = photo or (document and getattr(document, 'mime_type', '') in {'image/jpeg', 'image/png', 'image/webp'})
+        downloaded, exists, called = False, False, False
+        reason = 'no_supported_image' if not is_image else ''
+        self.diagnostics.event(source['id'], message.id, 'media_detection',
+            has_text=bool(raw.strip()), has_photo=bool(photo), has_image_document=bool(is_image and not photo))
         if is_image:
             ocr_status = 'disabled' if not self.settings.ocr_enabled else 'unavailable' if self.engine is None else 'pending'
             size = getattr(getattr(message, 'file', None), 'size', 0) or 0
             if size > 10 * 1024 * 1024:
                 ocr_status = 'oversized'
+            reason = {'disabled': 'ocr_disabled', 'unavailable': 'engine_unavailable', 'oversized': 'media_too_large'}.get(ocr_status, '')
             if ocr_status == 'pending':
                 self.settings.media_dir.mkdir(exist_ok=True)
                 # No source-controlled filenames, and all temporary copies are removed.
                 with tempfile.TemporaryDirectory(prefix='ocr_', dir=self.settings.media_dir) as folder:
                     original, prepared = Path(folder) / 'original', Path(folder) / 'prepared.png'
                     try:
-                        await client.download_media(message, file=str(original))
+                        reason = 'download_failed'
+                        downloaded_path = await client.download_media(message, file=str(original))
+                        # Telethon may add an extension: use its returned path, not the requested stem.
+                        if not downloaded_path:
+                            raise ValueError('No media returned')
+                        returned = Path(downloaded_path)
+                        original = returned.resolve()
+                        if original.parent != Path(folder).resolve() or returned.is_symlink():
+                            raise ValueError('Unexpected download destination')
+                        exists = original.is_file()
+                        downloaded = exists
+                        reason = 'downloaded_file_missing'
+                        if not exists:
+                            raise FileNotFoundError
+                        self.diagnostics.event(source['id'], message.id, 'download',
+                            media_downloaded=True, temp_path_exists=True)
+                        reason = 'media_too_large'
                         if original.stat().st_size > 10 * 1024 * 1024:
                             raise ValueError('Image exceeds OCR byte budget')
+                        reason = 'preprocess_or_ocr_failed'
                         def recognize():
+                            nonlocal called, reason
+                            reason = 'preprocess_failed'
                             preprocess(original, prepared)
+                            called = True
+                            reason = 'ocr_failed'
                             return cleanup_text(self.engine.read(prepared))
                         task = asyncio.create_task(asyncio.to_thread(recognize))
                         try:
@@ -75,6 +104,7 @@ class VacancyPipeline:
                             await task
                             raise
                         ocr_status = 'processed' if ocr else 'empty'
+                        reason = '' if ocr else 'ocr_empty'
                         if self.settings.keep_media:
                             retained = self.settings.media_dir / f"{source['id']}_{message.id}.image"
                             original.replace(retained)
@@ -83,4 +113,11 @@ class VacancyPipeline:
                     except Exception:
                         ocr_status = 'failed'
                         log.warning('OCR failure; source_id=%s message_id=%s', source['id'], message.id)
-        return dict(**analyze_text(raw, ocr), ocr_status=ocr_status)
+        self.diagnostics.event(source['id'], message.id, 'ocr', media_downloaded=downloaded,
+            temp_path_exists=exists, ocr_called=called, ocr_chars=len(ocr), ocr_preview=ocr, reason=reason)
+        result = dict(**analyze_text(raw, ocr), ocr_status=ocr_status)
+        self.diagnostics.event(source['id'], message.id, 'detection_and_parsing',
+            detection_score=result['detection_score'], detection_status=result['detection_status'],
+            role_found=bool(result['role']), location_found=bool(result['location']),
+            email_found=bool(result['email']), salary_found=result['salary_min'] is not None)
+        return result

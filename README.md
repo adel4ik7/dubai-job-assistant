@@ -92,6 +92,53 @@ if you have applied. The record is inserted only when the entire form is complet
 
 ### Recovery, retention and admin
 
+#### Diagnosing image-only posts
+
+The photo-path bug in v0.4 is fixed: Telethon can change the requested temporary
+stem `original` to `original.jpg` (or an image-document extension). The pipeline now
+uses the actual returned filename, validates that it is inside the temporary folder,
+then runs preprocessing/OCR. Previously `original.stat()` failed before OCR began.
+The earlier standalone OCR test missed this downloader boundary.
+
+Also check `VACANCY_OCR_ENABLED=true` in `.env`, then **restart the collector**.
+In the diagnosed local installation OCR was disabled: 22 image records had status
+`disabled`, including 18 with no caption. Such records have no OCR evidence and are
+excluded from vacancy listings when classified `not_vacancy`. Enabling OCR alone
+does not reprocess old message IDs; ordinary polling intentionally skips them.
+
+To read exactly one configured, enabled public-channel post again:
+
+```powershell
+python collector.py --reprocess-message jobs_in_dubai MESSAGE_ID --debug-pipeline
+```
+
+Replace `MESSAGE_ID` with the positive number at the end of the post URL. This
+updates the existing row (or inserts it if absent), preserves saved links, and does
+not advance the source cursor. Failed retries preserve an existing successful OCR
+result. It respects FloodWait and does not join channels or send messages.
+
+`--debug-pipeline` is temporary for that process only. It logs source ID/message ID,
+text/photo presence, download and temporary-file-existence flags, OCR called flag,
+character count, a masked preview of at most 120 characters, detection result,
+parsed-field presence, DB save/duplicate outcome and eligibility for the bot list.
+It never logs local paths, full text, contacts, credentials or exception contents.
+The preview keeps only a small vocabulary of job/technology words; unknown words
+(including personal names), numbers and contacts are masked. Run without the flag
+to disable these diagnostic events. Telegram/library DEBUG logging stays disabled.
+Reasons distinguish `ocr_disabled`, `engine_unavailable`, `download_failed`,
+`downloaded_file_missing`, `preprocess_failed`, `ocr_failed`, `ocr_empty`,
+`already_collected`, `not_detected` and `duplicate`. Bot-side user filters may still
+hide an otherwise eligible record; clear filters when checking a repaired post.
+
+EasyOCR's EN/RU models are `ocr_models/craft_mlt_25k.pth` and
+`ocr_models/cyrillic_g2.pth`. Use `--prepare-ocr` if they are missing. No Tesseract
+executable or separate OCR command-line binary is required; CPU PyTorch and other
+native dependencies are supplied by the Python wheels in the installation steps
+above. This diagnosis verified the real engine/model loading on Windows and the
+entire cached Telegram photo -> download -> OCR -> detection/parser -> SQLite ->
+bot card path without network. OCR extracted the fixture's role, location and salary;
+contact recognition is not guaranteed and missing contacts are never invented.
+
 `python collector.py --reprocess 100` retries up to 100 stored pending/failed texts
 without Telegram login. After enabling OCR, `python collector.py --retry-ocr 50`
 re-reads up to 50 previously failed/disabled/empty image posts and updates their rows;

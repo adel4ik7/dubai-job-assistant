@@ -95,6 +95,12 @@ class VacancyStore:
             return conn.execute('SELECT 1 FROM vacancies WHERE source_id=? AND source_message_id=?',
                                 (source_id, message_id)).fetchone() is not None
 
+    def message_record(self, source_id, message_id):
+        with self.db._connect() as conn:
+            row = conn.execute('SELECT * FROM vacancies WHERE source_id=? AND source_message_id=?',
+                               (source_id, message_id)).fetchone()
+            return dict(row) if row else None
+
     def insert(self, source_id, message_id, **values):
         unknown = set(values) - set(FIELDS)
         if unknown:

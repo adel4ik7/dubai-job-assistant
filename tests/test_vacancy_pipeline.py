@@ -116,7 +116,10 @@ class OCRPipelineTests(unittest.IsolatedAsyncioTestCase):
             settings = SimpleNamespace(ocr_enabled=True, keep_media=False, media_dir=Path(root))
             message = SimpleNamespace(id=1, message='', photo=True, file=SimpleNamespace(size=100))
             async def download(message, file):
-                Image.new('RGB', (400, 200), 'white').save(file, format='PNG')
+                # Match Telethon's extension-appending download contract.
+                actual = file + '.png'
+                Image.new('RGB', (400, 200), 'white').save(actual, format='PNG')
+                return actual
             client = SimpleNamespace(download_media=AsyncMock(side_effect=download))
             class FixtureEngine:
                 def read(self, path):

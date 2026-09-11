@@ -1,5 +1,38 @@
 # Dubai Job Assistant — TODO
 
+## Photo-vacancy diagnosis and fix — 2026-09-11
+- [x] Read-only local diagnosis: OCR flag was false; aggregate DB counts showed
+  22 supported images with `ocr_status=disabled`, including 18 without captions.
+  No raw posts, contacts, credentials or session contents were printed.
+- [x] Found separate download boundary bug in `services/vacancy_pipeline.py`:
+  Telethon appends `.jpg`/document extension to `original`; ignored return value
+  caused FileNotFoundError before OCR. Use/validate the actual returned path now.
+- [x] Real EasyOCR EN/RU models load successfully on Windows. The extended offline
+  fixture uses Telethon's actual cached-photo downloader, real CPU OCR, detector,
+  parser, SQLite insertion and bot card rendering. Role/location/salary are checked;
+  OCR can misread email punctuation, so absent contacts are not inferred.
+- [x] `--debug-pipeline`: opt-in stage flags, counts, redacted <=120-character preview,
+  parser field-presence flags, save/duplicate/UI eligibility and skip/failure reason.
+  No raw paths/exception strings or arbitrary OCR words/names/contacts are logged.
+- [x] `--reprocess-message SOURCE ID`: one configured enabled public post; preserves
+  record ID and source cursor, handles FloodWait and preserves previous successful
+  OCR if retry fails. Ordinary polling remains idempotent. Existing --retry-ocr now
+  uses the same safe save/retry path and emits diagnostics when requested.
+- [x] Enabled only the non-secret local `.env` flag VACANCY_OCR_ENABLED=true after
+  verifying models; all other bytes preserved. `.env` remains ignored and unstaged.
+- [x] 124 tests passed with RUN_OCR_INTEGRATION=1, including six new diagnostic/
+  replay/privacy tests and the upgraded full photo-pipeline integration fixture.
+- Final checks passed: full suite, compileall, pip check and diff check. Staged-file
+  audit excludes .env, models, sessions and all user data before commit.
+- Next exact step: restart the owner's collector so it reads the enabled flag.
+  Stop any other process using the same Telethon session before running
+  `.\.venv\Scripts\python.exe collector.py --reprocess-message jobs_in_dubai MESSAGE_ID --debug-pipeline`.
+  Replace MESSAGE_ID with the affected post's ID; or use `--retry-ocr 50` for the
+  previously disabled batch. Clear bot vacancy filters to verify the repaired card.
+  No live Telegram replay was run during development; existing posts were not rewritten.
+  No new product features or paid/AI API services were introduced.
+- Commit title: `Fix photo download path and add safe vacancy pipeline diagnostics`.
+
 ## v0.4 — Telegram Vacancy Collector
 - [x] v0.4a: separate Telethon process, local source configuration/SQLite tables,
   safe first-run baseline, bounded backfill, source controls and checkpointing.
