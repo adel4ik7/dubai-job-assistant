@@ -204,3 +204,18 @@ class CollectorTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(asyncio.CancelledError):
             await reprocess_backfill(self.collector, 'test_jobs', 1)
         self.assertIsNone(self.store.sources()[0]['last_checked_at'])
+
+    async def test_reprocess_backfill_logs_ocr_updates_and_duplicates(self):
+        from services.vacancy_pipeline import analyze_text
+        self.store.insert(self.source_id, 1, ocr_status='disabled')
+        photo = self.message(1, '')
+        photo.photo = True
+        self.client.get_messages.return_value = [self.message(2), photo]
+        self.collector.processor = AsyncMock(return_value=dict(
+            **analyze_text('', 'Hiring analyst in Dubai. Send CV jobs@example.com'), ocr_status='processed'))
+        with self.assertLogs('collector') as logs:
+            await reprocess_backfill(self.collector, 'test_jobs', 2)
+        output = '\n'.join(logs.output)
+        for label in ('OCR rerun requested', 'Vacancy updated', 'Duplicate', 'processed=2', 'skipped=0', 'failed=0'):
+            self.assertIn(label, output)
+        self.assertNotIn('jobs@example.com', output)

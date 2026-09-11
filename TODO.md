@@ -1,5 +1,14 @@
 # Dubai Job Assistant — TODO
 
+## Reprocess-backfill log completion — 2026-09-11
+- Existing bounded mode from 62ac542 retained; no duplicate implementation added.
+- Added explicit updated/duplicate/skipped outcomes, photo OCR rerun requests and
+  processed/skipped/failed summary; logs omit message content and contacts.
+- Regression verifies logs alongside existing bounds, dedup, stable IDs, checkpoint,
+  FloodWait, per-message failure and cancellation tests.
+- Verification: 130 tests including real OCR and compileall passed.
+- Next after commit: multi-source link normalization and safe source removal.
+
 ## Windows Unicode OCR fix — 2026-09-11
 - Preserved owner's manual Pillow -> EXIF transpose -> RGB -> NumPy -> readtext fix.
   No string filename crosses the EasyOCR/OpenCV boundary. NumPy import is lazy so

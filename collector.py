@@ -68,9 +68,11 @@ class Collector:
                 vacancy_id, inserted = previous['id'], False
                 # Preserve recognized image content on a failed/disabled retry.
                 if previous['ocr_text'] and values.get('ocr_status') in {'failed', 'disabled', 'unavailable', 'oversized', 'empty'}:
+                    log.warning('Skipped update: previous OCR preserved; source_id=%s message_id=%s', source['id'], message_id)
                     self.diagnostics.event(source['id'], message_id, 'save', reason='retry_failed_previous_preserved', vacancy_saved=False)
                     return previous
                 self.store.update_pipeline(vacancy_id, values)
+                log.info('Vacancy updated; source_id=%s message_id=%s vacancy_id=%s', source['id'], message_id, vacancy_id)
             else:
                 vacancy_id, inserted = self.store.insert(source['id'], message_id, **values)
         except Exception:
@@ -83,7 +85,7 @@ class Collector:
             detection_score=row['detection_score'], detection_status=row['detection_status'],
             reason='duplicate' if row['duplicate_of'] else 'not_detected' if row['detection_status'] not in {'vacancy', 'probably_vacancy'} else 'source_disabled' if not source['enabled'] else 'visible_without_user_filters')
         log.info('Message processed; source_id=%s message_id=%s', source['id'], message_id)
-        if inserted and row['duplicate_of']:
+        if row['duplicate_of']:
             log.info('Duplicate skipped from listings; vacancy_id=%s', vacancy_id)
         elif row['detection_status'] in {'vacancy', 'probably_vacancy'}:
             log.info('Vacancy detected; vacancy_id=%s', vacancy_id)
@@ -274,23 +276,30 @@ async def reprocess_backfill(collector, username, limit):
             log.warning('Telegram requested a wait; seconds=%s', exc.seconds)
             await collector.sleep(exc.seconds)
     seen = set()
+    processed, failed, skipped = 0, 0, 0
     for message in reversed(messages[:limit]):
         message_id = getattr(message, 'id', None)
         if not isinstance(message_id, int) or message_id <= 0 or isinstance(message, types.MessageEmpty) or message_id in seen:
+            skipped += 1
+            log.info('Skipped malformed, missing or repeated message; source_id=%s', source['id'])
             continue
         seen.add(message_id)
         while True:
             try:
+                if getattr(message, 'photo', None) or getattr(getattr(message, 'document', None), 'mime_type', '').startswith('image/'):
+                    log.info('OCR rerun requested; source_id=%s message_id=%s (requires enabled OCR and local models)', source['id'], message_id)
                 await collector.process_message(source, message, force=True)
+                processed += 1
                 break
             except errors.FloodWaitError as exc:
                 log.warning('Telegram requested a wait; seconds=%s', exc.seconds)
                 await collector.sleep(exc.seconds)
             except Exception:
+                failed += 1
                 log.warning('Backfill message retry failed; source_id=%s message_id=%s', source['id'], message_id)
                 break
         await collector.sleep(1)
-    log.info('Backfill retry finished; source_id=%s messages_attempted=%s', source['id'], len(seen))
+    log.info('Backfill retry finished; source_id=%s processed=%s skipped=%s failed=%s', source['id'], processed, skipped, failed)
 
 
 async def reprocess_message(collector, username, message_id):

@@ -112,6 +112,9 @@ preserved if a retry fails. Enable `VACANCY_OCR_ENABLED=true` and prepare the lo
 models first to recover image-only posts. Stop any other collector using the same
 session before running this command. Unlike ordinary `--backfill`, this mode retries
 already collected messages. It cannot be combined with `--backfill`.
+Logs identify processed posts, requested OCR reruns, updated rows, duplicates,
+skipped posts and failures; the final summary counts processed/skipped/failed posts.
+An OCR rerun request is not proof of success: check the OCR outcome in diagnostics.
 
 #### Diagnosing image-only posts
 
