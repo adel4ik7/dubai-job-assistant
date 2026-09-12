@@ -195,6 +195,17 @@ async def run(args):
             print(source['id'], source['telegram_username'], source['title'],
                   'removed' if source['removed_at'] else 'enabled' if source['enabled'] else 'disabled')
         return
+    if args.source_quality:
+        print('SOURCE QUALITY (latest stored outcome per unique source/message)')
+        for row in store.source_quality():
+            state = 'removed' if row['removed_at'] else 'enabled' if row['enabled'] else 'disabled'
+            print(f"{row['telegram_username']} | {row['title']} | {state}")
+            print('  ' + ' '.join(f'{key}={row[key]}' for key in (
+                'processed', 'vacancies', 'probably_vacancy', 'not_vacancy', 'pending',
+                'ocr_messages', 'ocr_failures', 'ocr_unavailable', 'duplicates')))
+            print(f"  avg_detection_score={row['avg_detection_score']:.1f} "
+                  f"useful_rate={row['useful_rate']:.1%} (vacancy + probably_vacancy)")
+        return
     settings = load_collector_settings()
     log.info('OCR configured: %s', 'enabled' if settings.ocr_enabled else 'disabled (image-only posts cannot be detected; set VACANCY_OCR_ENABLED=true)')
     settings.session_path.parent.mkdir(exist_ok=True)
@@ -352,6 +363,7 @@ def main():
     group.add_argument('--add-source', metavar='USERNAME_OR_LINK')
     parser.add_argument('--source-title', help='Optional RU/EN display name with --add-source.')
     group.add_argument('--list-sources', action='store_true')
+    group.add_argument('--source-quality', action='store_true', help='Show per-source quality from local stored posts; no Telegram login.')
     group.add_argument('--disable-source', metavar='ID_OR_USERNAME_OR_LINK')
     group.add_argument('--enable-source', metavar='ID_OR_USERNAME_OR_LINK')
     group.add_argument('--remove-source', metavar='ID_OR_USERNAME_OR_LINK', help='Stop collection without deleting vacancies or saved links; explicit add restores it.')

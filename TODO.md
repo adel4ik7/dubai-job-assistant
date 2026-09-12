@@ -1,5 +1,16 @@
 # Dubai Job Assistant — TODO
 
+## Source quality — 2026-09-12
+- Added offline `python collector.py --source-quality`: per-source unique messages,
+  detection outcomes, OCR candidates/failures/unavailable, duplicates, average score
+  and useful rate. Includes empty, disabled and removed sources; no post content.
+- Uses existing records; no schema, collector polling or user-data changes.
+- Tests cover aggregate counts, empty sources, duplicates, retry updates and an
+  offline CLI invocation that never loads Telegram settings or exposes post text.
+- Verification: all 179 tests passed, including real local OCR; compileall passed.
+- Next: UAE location normalization/filter in services/vacancy_locations.py (new),
+  vacancy_store.py:list and vacancy_ui.py filter menu, with regression tests.
+
 ## Search Quality V2 — 2026-09-12
 - Audited clean main and fetched origin/main; Profile edit submenu is already done.
 - Weighted search evidence: exact/alias role, synonym role, parsed skills, raw/OCR/

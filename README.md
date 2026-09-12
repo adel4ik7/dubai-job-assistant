@@ -31,6 +31,7 @@ Source-management commands work offline without Telegram login or API settings:
 ```powershell
 python collector.py --add-source https://t.me/CHANNEL --source-title "Работа / Jobs"
 python collector.py --list-sources
+python collector.py --source-quality
 python collector.py --disable-source CHANNEL
 python collector.py --enable-source CHANNEL
 python collector.py --remove-source CHANNEL
@@ -41,6 +42,19 @@ also accept the numeric ID from the list. Names may be Russian or English. Repea
 adds keep the same source ID; supplying a title updates its display name. Invite links
 and individual post links are rejected. Normal collection picks up all enabled sources
 on its next poll, without code changes or a restart.
+
+`--source-quality` is an offline local summary; it does not authorize Telegram or
+load OCR. Each source (including disabled/removed and empty sources) reports unique
+stored messages, vacancy/probably/not-vacancy/pending counts, image/OCR candidates,
+OCR failures, unavailable engines, duplicates and average detection score.
+`useful_rate` = (vacancy + probably_vacancy) / stored messages. Duplicates count in
+their original source's totals because this measures incoming source quality.
+OCR messages include images whose OCR was disabled, unavailable, oversized or
+failed, as well as successfully read/empty images. Failures count `failed` only;
+engine unavailability is separate. These are latest stored outcomes, not historical
+attempt counts: reprocessing can change quality without inflating message totals.
+Posts never downloaded/stored are absent; successful OCR retained after a failed
+retry remains a success here. No message text or contact details are printed.
 
 Removal is soft: it stops collection and marks the source as removed in the admin
 list, retaining posts, saved links and its cursor. Startup seeding never restores it

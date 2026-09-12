@@ -118,3 +118,57 @@ class SourceTests(unittest.TestCase):
                 patch('sys.stderr', new_callable=io.StringIO), self.assertRaises(SystemExit) as error:
             main()
         self.assertEqual(error.exception.code, 2)
+
+    def test_source_quality_counts_hidden_duplicate_and_ocr_outcomes(self):
+        first = self.store.add_source('english_jobs')
+        second = self.store.add_source('russian_jobs', 'Работа')
+        self.store.add_source('empty_jobs', enabled=False)
+        vid, _ = self.store.insert(first, 1, detection_status='vacancy',
+                                  detection_score=80, content_hash='same')
+        self.store.insert(first, 2, detection_status='probably_vacancy',
+                          detection_score=60, ocr_status='processed')
+        self.store.insert(first, 3, detection_status='not_vacancy',
+                          detection_score=20, ocr_status='failed')
+        self.store.insert(first, 4, ocr_status='unavailable')
+        self.store.insert(second, 1, detection_status='vacancy',
+                          detection_score=80, content_hash='same', ocr_status='empty')
+        self.store.remove_source(second)
+        rows = {r['telegram_username']: r for r in self.store.source_quality()}
+        row = rows['english_jobs']
+        self.assertEqual([row[k] for k in ('processed', 'vacancies', 'probably_vacancy',
+                         'not_vacancy', 'pending', 'ocr_messages', 'ocr_failures',
+                         'ocr_unavailable', 'duplicates')], [4, 1, 1, 1, 1, 3, 1, 1, 0])
+        self.assertEqual(row['avg_detection_score'], 40)
+        self.assertEqual(row['useful_rate'], 0.5)
+        self.assertEqual(rows['russian_jobs']['duplicates'], 1)
+        self.assertTrue(rows['russian_jobs']['removed_at'])
+        self.assertEqual(rows['empty_jobs']['processed'], 0)
+        self.assertEqual(rows['empty_jobs']['duplicates'], 0)
+        self.assertEqual(rows['empty_jobs']['avg_detection_score'], 0)
+        self.assertEqual(rows['empty_jobs']['useful_rate'], 0)
+        # Duplicate insert and reprocessing replace outcomes, never inflate counts.
+        self.store.insert(first, 1, detection_status='vacancy', detection_score=80)
+        self.store.update_pipeline(vid, dict(detection_status='not_vacancy', detection_score=0))
+        updated = next(r for r in self.store.source_quality() if r['id'] == first)
+        self.assertEqual(updated['processed'], 4)
+        self.assertEqual(updated['vacancies'], 0)
+        self.assertEqual(updated['useful_rate'], 0.25)
+
+    def test_source_quality_cli_is_offline_and_does_not_expose_post_content(self):
+        sid = self.store.add_source('russian_jobs', 'Работа / Jobs')
+        self.store.insert(sid, 1, raw_text='PRIVATE_FIXTURE_CONTENT',
+                          detection_status='vacancy', detection_score=80)
+        output = io.StringIO()
+        with patch('collector.BASE_DIR', self.root), \
+                patch('sys.argv', ['collector.py', '--source-quality']), \
+                patch('collector.load_collector_settings') as settings, \
+                patch('collector.TelegramClient') as client, redirect_stdout(output):
+            main()
+        settings.assert_not_called()
+        client.assert_not_called()
+        rendered = output.getvalue()
+        self.assertIn('SOURCE QUALITY', rendered)
+        self.assertIn('russian_jobs | Работа / Jobs | enabled', rendered)
+        self.assertIn('processed=1 vacancies=1', rendered)
+        self.assertIn('useful_rate=100.0%', rendered)
+        self.assertNotIn('PRIVATE_FIXTURE_CONTENT', rendered)

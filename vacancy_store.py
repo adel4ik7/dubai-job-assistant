@@ -235,6 +235,32 @@ class VacancyStore:
             return conn.execute('SELECT 1 FROM user_saved_vacancies u JOIN vacancies v ON v.id=u.vacancy_id WHERE u.user_id=? AND (v.id=? OR v.duplicate_of=?)',
                                 (user_id, vacancy_id, vacancy_id)).fetchone() is not None
 
+    def source_quality(self):
+        """Latest stored outcome per unique source/message, including hidden posts.
+
+        Retries update these rows; this is not a count of processing attempts.
+        Disabled/removed and empty sources remain available for comparison.
+        """
+        with self.db._connect() as conn:
+            rows = [dict(r) for r in conn.execute("""SELECT
+                s.id, s.telegram_username, s.title, s.enabled, s.removed_at,
+                COUNT(v.id) AS processed,
+                COALESCE(SUM(v.detection_status='vacancy'),0) AS vacancies,
+                COALESCE(SUM(v.detection_status='probably_vacancy'),0) AS probably_vacancy,
+                COALESCE(SUM(v.detection_status='not_vacancy'),0) AS not_vacancy,
+                COALESCE(SUM(v.detection_status='pending'),0) AS pending,
+                COALESCE(SUM(v.ocr_status!='not_needed'),0) AS ocr_messages,
+                COALESCE(SUM(v.ocr_status='failed'),0) AS ocr_failures,
+                COALESCE(SUM(v.ocr_status='unavailable'),0) AS ocr_unavailable,
+                COALESCE(SUM(v.duplicate_of IS NOT NULL),0) AS duplicates,
+                COALESCE(AVG(v.detection_score),0) AS avg_detection_score
+                FROM vacancy_sources s LEFT JOIN vacancies v ON v.source_id=s.id
+                GROUP BY s.id ORDER BY s.telegram_username COLLATE NOCASE""")]
+        for row in rows:
+            row['useful_rate'] = ((row['vacancies'] + row['probably_vacancy']) /
+                                  row['processed']) if row['processed'] else 0.0
+        return rows
+
     def stats(self):
         with self.db._connect() as conn:
             return dict(conn.execute("""SELECT
