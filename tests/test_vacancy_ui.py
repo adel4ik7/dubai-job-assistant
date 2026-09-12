@@ -64,6 +64,28 @@ class VacancyUITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(text('en', 'v_back_search'), self.labels())
         self.assertEqual(await self.click('v:search'), WAIT_VACANCY_INPUT)
 
+    async def test_uae_filter_toggle_ru_en_and_profile_preference(self):
+        local = self.add(1, 'Role: Cook\nLocation: Dubai\nHiring now. Send CV jobs@example.com', days=5)
+        self.add(2, 'Role: Cook\nLocation: Qatar\nHiring now. Send CV jobs@example.com')
+        bot.db.save_profile(1, current_location='ОАЭ')
+        await self.click('v:latest')
+        self.assertEqual(self.context.user_data['vacancy_navigation']['id'], local)
+        for language in ('en', 'ru'):
+            bot.db.set_language(1, language)
+            await self.click('v:filters')
+            self.assertIn(text(language, 'v_uae_only'), self.labels())
+            await self.click('v:uae')
+            self.assertTrue(self.context.user_data['vacancy_filters']['uae_only'])
+            self.assertEqual(self.context.user_data['vacancy_navigation']['id'], local)
+            self.assertNotIn(text(language, 'v_next'), self.labels())
+            await self.click('v:filters')
+            self.assertIn(text(language, 'v_uae_only'), self.reply())
+            await self.click('v:uae')
+            self.assertNotIn('uae_only', self.context.user_data['vacancy_filters'])
+        await self.click('v:uae')
+        await self.click('v:clear')
+        self.assertNotIn('vacancy_filters', self.context.user_data)
+
     async def test_menu_cards_ru_en_and_no_empty_fields(self):
         self.add(text='Hiring analyst in Dubai. Send CV jobs@example.com')
         for language in ('ru', 'en'):

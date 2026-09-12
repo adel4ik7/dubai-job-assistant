@@ -113,9 +113,27 @@ Case, punctuation, hyphen variants and extra whitespace are normalized. Specific
 queries such as `повар холодного цеха` retain their own synonym group. Unknown
 queries retain partial company/location search; this is not automatic translation
 or fuzzy OCR correction. The vocabulary lives in `services/vacancy_search.py`;
-filters combine location substring, minimum stated salary in AED, source and last
+filters combine normalized location, minimum stated salary in AED, source and last
 1–365 days. Unknown currencies/salaries do not pass salary filters. Saved listings
 are personal; `/delete_my_data` removes those links but retains public source posts.
+
+Location filters recognize RU/EN names of all seven UAE emirates/cities and
+UAE/United Arab Emirates/ОАЭ. Dubai matches Дубай; UAE includes every recognized
+emirate. Other location queries retain substring matching on the parsed location.
+**Filters → UAE only / Только ОАЭ** toggles a strict filter that excludes unknown
+and mixed-country workplaces as well as recognized foreign locations. It combines
+with role search, salary, source and publication filters; Clear filters removes it.
+Explicit workplace lines override incidental recruiter/contact/experience mentions.
+Filtering also checks old raw/OCR text, without changing records or requiring a
+backfill. Normalization is a small rule-based dictionary, not a worldwide geocoder;
+ambiguous posts may require reading the original source.
+
+With a UAE location in the user profile and no explicit location filter, latest
+results put known UAE workplaces first. Search adds a small 10-point geographic
+bonus to already eligible matches; role evidence still outranks body-only evidence.
+The bonus does not rescue rejected noise or hide foreign vacancies. Use UAE only
+to exclude them. An explicit location filter takes precedence over the profile;
+saved vacancies remain available regardless of current search filters.
 
 Search Quality V2 ranks all eligible matches before pagination: exact normalized
 role (100), CDP alias (98), role phrase (94), synonym role (86/78), parsed skills

@@ -369,5 +369,8 @@
   "profile_edit_notes": "📝 Notes",
   "v_back_search": "Back to search",
   "v_search_high": "Search relevance: high",
-  "v_search_medium": "Search relevance: medium"
+  "v_search_medium": "Search relevance: medium",
+  "v_uae_only": "UAE only",
+  "v_uae_on": "UAE-only filter enabled. Unknown or mixed-country workplaces are excluded. Tap UAE only again to turn it off.",
+  "v_uae_off": "UAE-only filter disabled."
 }

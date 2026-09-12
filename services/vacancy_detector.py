@@ -1,6 +1,7 @@
 """Independent evidence groups, not keyword frequency; confidence is heuristic."""
 import re
-from services.vacancy_parser import ROLES, LOCATION, contacts, salary
+from services.vacancy_parser import ROLES, contacts, salary
+from services.vacancy_locations import parse_location
 
 INTENT = re.compile(r'\b(?:hiring|vacanc(?:y|ies)|wanted|looking for|job opening|career opportunity|'
                     r'send (?:your )?cv|apply now|walk[- ]in interview|recruitment)\b|'
@@ -17,7 +18,7 @@ def detect_vacancy(text):
         'role': bool(ROLES.search(text)),
         'salary': salary(text)['salary_min'] is not None,
         'contact': any(contacts(text).values()) or bool(re.search(r'https?://\S*(?:apply|career|jobs)\S*', text, re.I)),
-        'location': bool(LOCATION.search(text)),
+        'location': bool(parse_location(text)),
         'requirements': bool(REQUIREMENTS.search(text)),
     }
     weights = dict(intent=30, role=20, salary=15, contact=15, location=10, requirements=10)

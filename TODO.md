@@ -1,5 +1,41 @@
 # Dubai Job Assistant — TODO
 
+## Exact continuation checkpoint — 2026-09-12
+- Attached request priorities 1–3 are complete (search quality, source quality,
+  UAE location filtering). Priority 6 Profile UX was already complete and its
+  regressions remain green. No unfinished changes to these stages remain.
+- Priority 4 Job alerts has NOT been started. Next implementation: create
+  `services/job_alerts.py` for persisted per-user preferences and bounded matching
+  preview using the existing synonym/location/search layer. Add additive tables
+  in `db.py` for preferences and unique `(user_id, vacancy_id)` delivery history;
+  include both in the existing delete-user-data transaction. Add a shared RU/EN
+  preview/preferences screen (new `alerts_ui.py`) and tests. Keep actual sending
+  disabled; design explicit delivery states/rate limits before wiring notifications
+  to `collector.py:Collector.process_message`. Do not mark previews as deliveries.
+- Priority 5 CV visual restyling has NOT been done in this run. Existing CV Builder,
+  three renderers and active-CV integration work, but visual improvement/demo PDFs
+  remain. Start from `services/cv_export.py` and `templates/template_*/style.json`;
+  read renderer tests and render current samples before editing only presentation.
+  Preserve selectable PDF text, editable DOCX and existing wizard/data model.
+- Resume commands (PowerShell, project directory):
+  `.\\.venv\\Scripts\\python.exe collector.py --source-quality`
+  `$env:RUN_OCR_INTEGRATION='1'; .\\.venv\\Scripts\\python.exe -m unittest discover -s tests -q`
+  `.\\.venv\\Scripts\\python.exe -m compileall .`
+- Baseline for the next stage: 184 passing tests, including real local OCR;
+  compileall and dependency check passed. Commit/push each next milestone and
+  keep secrets/session/database/upload/media files out of Git.
+
+## UAE location filtering — 2026-09-12
+- Shared RU/EN location normalization for all seven UAE emirates/cities and UAE;
+  parser and detector use it. Country deduplicated when cities are known.
+- Strict UAE-only toggle in localized vacancy filters; combines with pagination,
+  salary/source/date/search. Unknown and mixed-country workplaces excluded.
+- Read-time handling for legacy OCR/raw posts, prioritizing explicit workplace
+  over recruiter contacts/experience. No data migration or re-collection required.
+- Profile UAE location softly prioritizes UAE results when no location filter is
+  set; explicit location overrides it. Saved list stays independent of filters.
+- Verification: all 184 tests passed, including real local OCR; compileall passed.
+
 ## Source quality — 2026-09-12
 - Added offline `python collector.py --source-quality`: per-source unique messages,
   detection outcomes, OCR candidates/failures/unavailable, duplicates, average score
@@ -8,8 +44,7 @@
 - Tests cover aggregate counts, empty sources, duplicates, retry updates and an
   offline CLI invocation that never loads Telegram settings or exposes post text.
 - Verification: all 179 tests passed, including real local OCR; compileall passed.
-- Next: UAE location normalization/filter in services/vacancy_locations.py (new),
-  vacancy_store.py:list and vacancy_ui.py filter menu, with regression tests.
+- UAE location follow-up completed above; next work is in the continuation checkpoint.
 
 ## Search Quality V2 — 2026-09-12
 - Audited clean main and fetched origin/main; Profile edit submenu is already done.

@@ -37,6 +37,8 @@ class VacancyUI:
         tr = self.product.translator(update)
         user = update.effective_user.id
         selection = context.user_data.get('vacancy_filters', {})
+        profile = self.db.get_profile(user)
+        selection = {**selection, 'preferred_location': (profile or {}).get('current_location', '')}
         if mode == 'best':
             resume = self.db.active_resume(user)
             if not resume:
@@ -160,10 +162,19 @@ class VacancyUI:
                     await self.listing(update, context, page[1], max(0, page[2] + (1 if action == 'next' else -1)))
             elif action == 'filters':
                 rows = [[(tr('v_' + field), 'v:input:' + field)] for field in ('location', 'salary_min', 'days')]
-                rows += [[(tr('v_source'), 'v:sources')], [(tr('clear_filters'), 'v:clear')], [(tr('v_menu'), 'v:home')]]
+                rows += [[(tr('v_uae_only'), 'v:uae')], [(tr('v_source'), 'v:sources')], [(tr('clear_filters'), 'v:clear')], [(tr('v_menu'), 'v:home')]]
                 selection = context.user_data.get('vacancy_filters', {})
-                summary = '\n'.join(tr('v_' + key) + ': ' + str(value) for key, value in selection.items())
+                summary = '\n'.join(tr('v_' + key) + ('' if key == 'uae_only' else ': ' + str(value)) for key, value in selection.items())
                 await self.product.reply(update, tr('v_filters') + '\n' + summary, markup(rows))
+            elif action == 'uae':
+                selection = context.user_data.setdefault('vacancy_filters', {})
+                if selection.get('uae_only'):
+                    selection.pop('uae_only')
+                    await self.product.reply(update, tr('v_uae_off'))
+                else:
+                    selection['uae_only'] = True
+                    await self.product.reply(update, tr('v_uae_on'))
+                await self.listing(update, context)
             elif action == 'clear':
                 context.user_data.pop('vacancy_filters', None)
                 await self.listing(update, context)

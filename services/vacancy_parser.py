@@ -2,12 +2,12 @@
 import re
 
 from services.matcher import extract_requirements
+from services.vacancy_locations import parse_location
 
 EMAIL = re.compile(r'(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+', re.I)
 PHONE = re.compile(r'(?<!\d)(?:(?:\+|00)?971[\s().-]*(?:0[\s().-]*)?|0)(?:5[024568]|[234679])[\s().-]*\d(?:[\s().-]*\d){6}(?!\d)')
 CONTACT = re.compile(r'(?<![\w@])@[a-zA-Z][\w]{3,31}\b')
 URL = re.compile(r'https?://[^\s<>]+', re.I)
-LOCATION = re.compile(r'\b(?:Dubai|Abu Dhabi|Sharjah|UAE|United Arab Emirates)\b|Дубай|Дубае|Абу[ -]Даби|Шарджа|Шардже|ОАЭ', re.I)
 ROLES = re.compile(r'\b(?:data analyst|business analyst|software engineer|sales executive|sales manager|'
     r'accountant|analyst|developer|engineer|receptionist|waiter|waitress|chef|driver|nurse|'
     r'teacher|cashier|barista|cleaner|administrator|designer|manager|assistant)\b|'
@@ -64,8 +64,7 @@ def parse_vacancy(text):
     result['role'] = title[1].strip()[:200] if title else known_role[0] if known_role else None
     company = re.search(r'^(?:company|employer|компания|работодатель)\s*[:–-]\s*([^\n]+)', text, re.I | re.M)
     result['company'] = company[1].strip()[:200] if company else None
-    locations = list(dict.fromkeys(m[0] for m in LOCATION.finditer(text)))
-    result['location'] = ', '.join(locations) if locations else None
+    result['location'] = parse_location(text)
     experience = re.search(r'\b\d+(?:\s*[-–]\s*\d+)?\+?\s*(?:years?|yrs?)\s*(?:of\s+)?(?:[\w ]{0,35})?experience\b|опыт[^\n.]{0,60}\d+[^\n.]{0,20}', text, re.I)
     result['experience'] = experience[0].strip() if experience else None
     requirements = extract_requirements(text)

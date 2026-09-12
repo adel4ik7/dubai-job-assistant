@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlsplit
 from services.vacancy_search import MIN_RELEVANCE, relevance_scorer
+from services.vacancy_locations import UAE_LOCATIONS, location_matcher, recognized_locations
 
 
 SCHEMA = '''
@@ -181,21 +182,23 @@ class VacancyStore:
             return dict(row) if row else None
 
     def list(self, *, limit=100, offset=0, search='', location='', salary_min=None,
-             source_id=None, days=None, saved_user=None):
+             source_id=None, days=None, saved_user=None, uae_only=False, preferred_location=''):
         clauses = ["v.detection_status IN ('vacancy','probably_vacancy')", 'v.duplicate_of IS NULL']
         if saved_user is None:
             clauses.append('(s.enabled=1 OR EXISTS(SELECT 1 FROM vacancies d JOIN vacancy_sources ds ON ds.id=d.source_id WHERE d.duplicate_of=v.id AND ds.enabled=1))')
         values = []
         select = 'v.*,s.title AS source_title'
         order = 'v.published_at DESC,v.id DESC'
+        prefer_uae = bool(recognized_locations(preferred_location) & UAE_LOCATIONS.keys()) and not location
+        if prefer_uae and not search:
+            order = 'location_preference(v.location,v.combined_text,v.ocr_text,v.raw_text) DESC,' + order
         if search:
             select += ',search_score(v.role,v.skills_json,v.combined_text,v.ocr_text,v.raw_text,v.company,v.location) AS search_relevance'
             clauses.append('search_relevance>=?')
             values.append(MIN_RELEVANCE)
             order = 'search_relevance DESC,julianday(v.published_at) DESC,casefold(v.role),casefold(v.company),v.source_url'
-        if location:
-            clauses.append('instr(casefold(v.location),casefold(?))>0')
-            values.append(location)
+        if location or uae_only:
+            clauses.append('location_matches(v.location,v.combined_text,v.ocr_text,v.raw_text)=1')
         if salary_min is not None:
             clauses.append("v.salary_currency='AED' AND v.salary_min>=?")
             values.append(salary_min)
@@ -209,8 +212,21 @@ class VacancyStore:
             clauses.append('EXISTS(SELECT 1 FROM user_saved_vacancies u JOIN vacancies saved ON saved.id=u.vacancy_id WHERE (saved.id=v.id OR saved.duplicate_of=v.id) AND u.user_id=?)')
             values.append(saved_user)
         with self.db._connect() as conn:
+            if location or uae_only:
+                conn.create_function('location_matches', 4, location_matcher(location, uae_only), deterministic=True)
             if search:
-                conn.create_function('search_score', 7, relevance_scorer(search), deterministic=True)
+                base_score = relevance_scorer(search)
+                in_uae = location_matcher(uae_only=True)
+                def score(role, skills, combined, ocr, raw, company, place):
+                    value = base_score(role, skills, combined, ocr, raw, company, place)
+                    # Small geographic preference cannot promote rejected noise
+                    # or make body-only evidence outrank a matching title.
+                    if prefer_uae and value >= MIN_RELEVANCE and in_uae(place, combined, ocr, raw):
+                        value += 10
+                    return value
+                conn.create_function('search_score', 7, score, deterministic=True)
+            elif prefer_uae:
+                conn.create_function('location_preference', 4, location_matcher(uae_only=True), deterministic=True)
             return [dict(r) for r in conn.execute(
                 'SELECT ' + select + ' FROM vacancies v JOIN vacancy_sources s ON s.id=v.source_id WHERE ' +
                 ' AND '.join(clauses) + ' ORDER BY ' + order + ' LIMIT ? OFFSET ?',
