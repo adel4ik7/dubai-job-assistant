@@ -91,3 +91,36 @@ class AlertsUITests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(bot.alerts_ui.store.preferences(1)['enabled'])
         with bot.db._connect() as conn:
             self.assertEqual(conn.execute('SELECT COUNT(*) FROM alert_preferences').fetchone()[0], 0)
+
+    async def test_matching_jobs_ru_en_pagination_save_and_stale_buttons(self):
+        bot.alerts_ui.store.update(1,'roles','Cook')
+        source = bot.vacancies.store.add_source('test_jobs')
+        for i in range(3):
+            bot.vacancies.store.insert(source,i+1,role='Cook',location='Dubai',detection_status='vacancy',
+                published_at=datetime.now(timezone.utc).isoformat(),source_url=f'https://t.me/test_jobs/{i+1}')
+        for lang in ('ru','en'):
+            bot.db.set_language(1,lang)
+            await self.click('al:home')
+            labels = [b.text for row in self.message.reply_text.call_args.kwargs['reply_markup'].inline_keyboard for b in row]
+            self.assertIn(text(lang,'mj_button'),labels)
+            await self.click('al:matches')
+            self.assertIn(text(lang,'mj_heading',count=3),self.reply())
+            selection = self.context.user_data['matching_jobs']
+            token = selection['token']
+            await self.click(f'al:page:{token}:1')
+            self.assertIn(selection['rows'][1]['source_title'],self.reply())
+            await self.click(f'al:page:{token}:0')
+            await self.click(f'al:save:{token}:0')
+            self.assertTrue(bot.vacancies.store.is_saved(1,selection['rows'][0]['id']))
+            self.assertIn(text(lang,'mj_heading',count=3),self.reply())
+            await self.click('al:matches')
+            await self.click(f'al:page:{token}:1')
+            self.assertIn(text(lang,'v_stale'),self.reply())
+
+    async def test_matching_jobs_empty_screen_has_settings_all_and_back(self):
+        for lang in ('ru','en'):
+            bot.db.set_language(1,lang)
+            await self.click('al:matches')
+            self.assertEqual(self.reply(),text(lang,'mj_empty'))
+            callbacks = [b.callback_data for row in self.message.reply_text.call_args.kwargs['reply_markup'].inline_keyboard for b in row]
+            self.assertEqual(callbacks,['al:home','v:home','al:home'])

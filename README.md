@@ -2,6 +2,29 @@
 
 ## Personal Job Alerts / Персональные уведомления
 
+**🎯 Matching jobs now / Подходящие вакансии сейчас** shows a retrospective
+selection using saved alert professions/keywords, location, UAE only and salary.
+It works even with notifications OFF and does not change the subscription cutoff,
+queue, quotas or delivery history. Set a profession or keyword first.
+
+This manual selection keeps unknown salaries (including amounts whose currency
+cannot be compared with AED); stated AED ranges are excluded only when the upper
+end is below the requested minimum. Automatic alerts retain their stricter salary
+rule. The selection uses the same synonym/relevance scorer and location rules.
+Matching title evidence ranks above skills and body-only evidence; known sufficient
+salary breaks equal profession-evidence ties. Optional active-CV score is secondary
+to alert relevance, followed by publication date, never vacancy ID.
+
+The query uses the publication index and a 14-day date bound, applies visibility,
+location and salary filters in SQL, and evaluates at most 300 recent candidates.
+Normally results cover seven days; if fewer than five relevant candidates exist,
+the window expands to 14 days. Up to 50 best results are displayed one at a time,
+with Next/Previous, source, compare, save and application actions. Counts refer to
+this bounded selection, not the whole database. Page navigation reuses the snapshot
+without repeating CV analysis; click Matching jobs now again to refresh. Editing
+matching settings invalidates old page buttons. Undated, duplicate, rejected and
+future posts are excluded. A missing salary is shown explicitly.
+
 Open **🔔 Job Alerts / Уведомления** in the main menu. Set professions and optional
 extra keywords/aliases (up to 12 comma/newline-separated phrases in each list),
 workplace location, UAE only and optional minimum salary in AED, then enable.

@@ -1,5 +1,23 @@
 # Dubai Job Assistant — TODO
 
+## Matching jobs now — 2026-09-12
+- Added RU/EN retrospective selection inside Job Alerts using saved roles/aliases,
+  location, UAE only and minimum salary. Works when alerts are OFF, without touching
+  delivery history, cutoffs, quotas or automatic notification behavior.
+- Existing relevance/synonym/location/CV scorers reused. Known insufficient AED
+  ranges excluded; unknown/non-comparable salary retained. Exact title evidence
+  outranks synonyms/skills/body; CV only breaks alert-relevance ties, then date.
+- Indexed date-bound SQL selects at most 300 filtered candidates; seven days,
+  expanded to 14 if fewer than five relevant matches. Top 50 cached for pagination.
+- Localized count/cards/high-medium relevance/optional CV score, next/previous,
+  source/save/compare/application actions and settings/back/no-results screens.
+- Tests: matching preferences, synonyms, salary unknown/ranges, UAE, ranking and
+  secondary CV, dates, duplicates, 300/50 bounds, RU/EN navigation/save/empty/stale.
+- Verification: baseline 203 tests; final full suite 210 tests passed, including
+  real local OCR. compileall, diff check and secrets/unignored-file audit passed.
+- Scope complete after validation; do not start CV redesign or another major stage
+  as part of this request. Existing automatic Job Alerts architecture unchanged.
+
 ## Personal Job Alerts — 2026-09-12
 - Added RU/EN Job Alerts menu: professions, extra keyword/alias lists, location,
   UAE only, optional minimum AED salary, ON/OFF and current settings; /cancel.
