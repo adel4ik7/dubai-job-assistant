@@ -7,6 +7,7 @@ from datetime import date
 from statuses import STATUSES, LEGACY_STATUSES, normalize_status
 from vacancy_store import SCHEMA as VACANCY_SCHEMA
 from services.job_alerts import SCHEMA as ALERT_SCHEMA
+from services.application_tracker import initialize as initialize_tracker
 PROFILE_FIELDS = ("full_name", "desired_role", "desired_salary", "current_location",
                   "visa_status", "years_experience", "english_level", "notes")
 
@@ -134,6 +135,7 @@ class Database:
                         conn.execute("UPDATE applications SET date_applied=substr(created_at,1,10) WHERE status!='saved'")
             conn.execute("""INSERT OR IGNORE INTO active_resumes(telegram_id,resume_id)
                             SELECT telegram_id, MAX(id) FROM resumes GROUP BY telegram_id""")
+            initialize_tracker(conn)
 
     def upsert_user(self, telegram_id: int, username: str | None, first_name: str | None) -> None:
         with self._connect() as conn:
@@ -295,6 +297,7 @@ class Database:
                 ("applied", "hr_screening", "interview", "test_task", "final_interview")),
                 "interviews": interviews, "offers": offers, "rejections": rejections,
                 "submitted": submitted, "interview_rate": round(100 * interviews / submitted, 1) if submitted else 0,
+                "response_rate": round(100 * sum(counts.get(s,0) for s in ('hr_screening','interview','test_task','final_interview','offer','rejected')) / submitted,1) if submitted else 0,
                 "offer_rate": round(100 * offers / submitted, 1) if submitted else 0}
 
     def resume_paths(self, telegram_id: int) -> list[str]:

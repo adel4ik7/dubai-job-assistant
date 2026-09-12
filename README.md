@@ -513,16 +513,60 @@ they do not claim to write to the device clipboard.
 manual application, NOT an email send. It creates or reuses their application by
 vacancy ID (canonical vacancy) or an existing original source URL, recording
 `selected_cv_id`, `recipient_email`, `email_subject`, `email_body`, `source_url`,
-status `applied`, date and UTC `applied_at`/`last_contact_at`. `follow_up_at` remains
-NULL for future work. A unique owner/vacancy index and atomic update prevent duplicate
+status `applied`, date and UTC `applied_at`/`last_contact_at`. `follow_up_at` starts
+NULL until the user schedules a reminder from application details. A unique owner/vacancy index and atomic update prevent duplicate
 records; repeated marking preserves the first applied timestamp and later tracker
 statuses. Unavailable fields remain empty/NULL. Confirm/save-only remains available
 and still makes no tracker status change. All records are removed by the existing
-confirmed `/delete_my_data` flow. No SMTP, email API or follow-up scheduler exists.
+confirmed `/delete_my_data` flow. No SMTP or email API is used. Follow-up reminders notify only the user.
 `/delete_my_data` also removes these records. No SMTP credentials, server setup or
 email provider is needed. The module is a foundation for future explicit sending.
 
 ### Application tracking
+
+Each application now opens a detailed card with status, original post URL, salary,
+applied date/time, selected CV, literal employer email, notes, interview and follow-up.
+Buttons support status changes, Timeline, interviews, follow-ups, notes, owner-only
+CV download, Apply Pack, source and confirmed deletion. All screens are RU/EN.
+Deleting an application deletes its events/reminders, but keeps CV files. Personal
+data deletion also removes events/reminders through application cleanup triggers.
+
+Status transitions from any existing path (menu, `/status`, Apply Pack) create
+transactional `application_events`. Repeating the same status or identical schedule
+does not create another event. Timeline is chronological and paginated, ten events
+per page. Existing applications get one **current-status snapshot at migration**;
+earlier transitions/times are not invented. The migration is additive/idempotent.
+
+Follow-up presets are 2, 3, 5 or 7 days **from selection**, or enter a future
+`YYYY-MM-DD HH:MM`. No reminder clears pending follow-ups; Reply received updates
+last contact and clears the follow-up. Snooze opens the same schedule menu. Notes
+replace the application's note field and are recorded in history.
+
+Interview setup asks for date/time, format (onsite, phone, video), optional
+location/link and notes. All user-entered/displayed times use **Dubai UTC+04:00**;
+the database stores UTC. This also works on Windows without an external timezone
+database. Scheduling an interview does not silently change the application's status.
+Only future 24-hour/2-hour deadlines are queued; missed deadlines at creation are
+not sent retroactively. Rescheduling cancels pending old reminders. If the bot was
+offline past both deadlines, only the 2-hour reminder is delivered, while the
+interview is still upcoming. No interview reminder is sent after the interview.
+
+The existing bot worker sends reminders only to the application's owner. SQLite
+unique schedule keys and atomic claims prevent duplicates, including across
+restarts. Reminders share the global two-second send gate with Job Alerts; each
+user's application reminders are at least 60 seconds apart. Telegram RetryAfter
+pauses the shared gate; uncertain network/crash outcomes are not resent (possible
+missed reminder instead of duplicate). Blocked recipients' queued application
+reminders are cancelled. Offer/Rejected/Withdrawn cancel pending reminders. One
+already-dispatched request can arrive after a cancellation/deletion. Nothing is
+sent to employers; no SMTP or employer messaging API is implemented.
+
+**📅 Today / Сегодня** lists today's Dubai-time interviews and follow-ups, overdue
+follow-ups and active applications with no recorded status change for 14 days.
+There are at most ten summaries per page, each opening its application; more are
+paginated. Saved applications appear only if an interview/follow-up is scheduled.
+Closed applications are excluded. Imported records start their known status age
+from the migration snapshot, not an invented historical transition.
 
 Add records through the Applications form. Fields: company, role, status, source,
 salary if known, date applied (YYYY-MM-DD; blank if unknown/not applied), and notes.
@@ -546,12 +590,15 @@ Changing a record with no applied date to a submitted stage sets today's date.
 - Active: Applied, HR screening, Interview, Test task, Final interview.
 - Interviews: records currently in Interview, Test task or Final interview.
 - Offers/rejections: records currently at Offer/Rejected.
+- Response rate: current HR screening, Interview, Test task, Final interview, Offer
+  or Rejected divided by submitted records. Saved, Withdrawn and unknown statuses
+  are excluded from the denominator; empty denominators produce 0%.
 - Interview-stage and offer rates: respective current counts divided by records
   with listed submitted statuses (excludes Saved, Withdrawn and unknown legacy
   statuses). Empty denominators produce 0%.
 
 These are **current-state ratios**, not lifetime funnel conversion rates; there is
-no transition-history inference. Offers are excluded from active applications.
+no transition-history inference in these formulas. Offers are excluded from active applications.
 
 ## Privacy and deletion
 

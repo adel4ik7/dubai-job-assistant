@@ -1,5 +1,24 @@
 # Dubai Job Assistant — TODO
 
+## Application follow-up and interview tracker — 2026-09-13
+- Added owner-scoped details, selected CV download, status picker, timeline, note,
+  interview wizard, follow-up presets/custom date/cancel/reply, confirmed delete.
+- Additive interview fields + application_events/application_reminders. DB triggers
+  capture real status transitions across all existing paths and clean up private
+  history/reminders on deletion. Existing rows get one honest current-status snapshot.
+- Dubai UTC+04 UI dates stored in UTC. Follow-up and 24h/2h interview reminders
+  are owner-only, durable and uniquely scheduled; reschedules cancel pending old
+  jobs. Existing worker/global throttle reused. RetryAfter honored; ambiguous sends
+  never automatically replayed. Terminal statuses stop pending reminders.
+- Today paginated (10) with interviews/follow-ups/overdue/14-day unchanged statuses.
+  Dashboard adds current-status response rate with only valid submitted statuses.
+- RU/EN strings in catalogs; no AI, paid services or employer messages.
+- Tests cover migration/history/idempotence, due times/snooze, interview deadlines,
+  retries/uncertain sends, privacy/owner checks, Today, rates, RU/EN and Apply Pack.
+- Verification: baseline 217 tests; final full suite 230 tests passed including OCR
+  and Apply Pack. compileall, dependency and diff checks passed. No outstanding
+  implementation for this milestone; employer messaging remains out of scope.
+
 ## Apply Pack — 2026-09-12
 - Extended existing Apply preparation without adding email transport: vacancy data,
   explicit missing email, active/saved CV selection and download, Create CV link,

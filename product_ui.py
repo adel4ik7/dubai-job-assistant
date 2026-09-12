@@ -286,7 +286,7 @@ class ProductUI:
                 await self.reply(update, tr('status_updated_2') if ok else tr('application_not_found'), self.menu(update))
             elif action == 'dashboard':
                 d = self.db.dashboard(user_id)
-                await self.reply(update, tr('dashboard') + '\n'.join((f'{label}: {d[key]}' for key, label in (('total', tr('total_applications')), ('active', tr('active_applications')), ('interviews', tr('interviews_tests')), ('offers', tr('offers')), ('rejections', tr('rejections'))))) + tr('current_interview_stage_rate_v0_offer_rate_v1_rates_use_curr', v0=d['interview_rate'], v1=d['offer_rate']), self.menu(update))
+                await self.reply(update, tr('dashboard') + tr('at_response_rate',rate=d['response_rate'])+'\n' + '\n'.join((f'{label}: {d[key]}' for key, label in (('total', tr('total_applications')), ('active', tr('active_applications')), ('interviews', tr('interviews_tests')), ('offers', tr('offers')), ('rejections', tr('rejections'))))) + tr('current_interview_stage_rate_v0_offer_rate_v1_rates_use_curr', v0=d['interview_rate'], v1=d['offer_rate']), self.menu(update))
             elif action in {'save', 'other', 'gaps', 'profilegaps', 'compare'}:
                 analysis = context.user_data.get('analysis')
                 if not analysis or (action != 'compare' and parts[2] != analysis['token']):

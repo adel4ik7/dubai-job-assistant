@@ -7,6 +7,7 @@ from datetime import timedelta
 from telegram.error import RetryAfter, Forbidden, BadRequest, TelegramError
 from services.job_alerts import JobAlerts
 from alerts_ui import notification
+from services.application_reminders import deliver_reminder
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +47,8 @@ async def start_sender(application):
     async def loop():
         while True:
             try:
-                await deliver_one(application.bot, store)
+                if not await deliver_reminder(application.bot,store.db):
+                    await deliver_one(application.bot, store)
             except asyncio.CancelledError:
                 raise
             except Exception:
