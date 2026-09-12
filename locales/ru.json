@@ -366,5 +366,8 @@
   "profile_edit_visa_status": "🪪 Статус визы",
   "profile_edit_years_experience": "📈 Опыт работы",
   "profile_edit_english_level": "🇬🇧 Уровень английского",
-  "profile_edit_notes": "📝 Заметки"
+  "profile_edit_notes": "📝 Заметки",
+  "v_back_search": "Назад к поиску",
+  "v_search_high": "Совпадение с запросом: высокое",
+  "v_search_medium": "Совпадение с запросом: среднее"
 }

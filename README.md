@@ -97,11 +97,25 @@ combined text and location. A small offline RU/EN profession dictionary expands
 whole queries: `повар` finds cook/chef/commis/CDP and `chef` also finds `повар`.
 Case, punctuation, hyphen variants and extra whitespace are normalized. Specific
 queries such as `повар холодного цеха` retain their own synonym group. Unknown
-queries still use ordinary substring search; this is not automatic translation
+queries retain partial company/location search; this is not automatic translation
 or fuzzy OCR correction. The vocabulary lives in `services/vacancy_search.py`;
 filters combine location substring, minimum stated salary in AED, source and last
 1–365 days. Unknown currencies/salaries do not pass salary filters. Saved listings
 are personal; `/delete_my_data` removes those links but retains public source posts.
+
+Search Quality V2 ranks all eligible matches before pagination: exact normalized
+role (100), CDP alias (98), role phrase (94), synonym role (86/78), parsed skills
+(65), text/OCR (55/45), company/location (35). Generic cook searches lower senior
+head/executive/sous-chef matches slightly. An isolated body mention in a long post
+with an unrelated parsed role scores 20 and falls below the minimum threshold 30.
+Repeated text does not accumulate extra score. Ties use publication time, then
+role/company/source URL; search does not sort by vacancy ID. This is search
+relevance, separate from CV match and detection confidence.
+Cards show high/medium relevance, Next, Previous and Back to search. There is no
+five-result or thirty-result total cap: all qualifying records remain pageable,
+one card at a time (storage requests are bounded to 100 per page). Search cannot
+guarantee 30 matches when fewer eligible vacancies exist. Existing filters still
+combine with the query; clear them if expected posts are hidden.
 
 Analysis uses the active CV and the existing heuristic report. Best matches runs
 only on request, over the latest `VACANCY_MATCH_WINDOW` selected posts (default/max

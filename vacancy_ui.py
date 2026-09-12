@@ -54,20 +54,30 @@ class VacancyUI:
             ranked = context.user_data.get('vacancy_ranked', [])
             row = self.store.get(ranked[offset][0]) if offset < len(ranked) else None
             score = ranked[offset][1] if row else None
+            has_next = offset + 1 < len(ranked)
         else:
-            rows = self.store.list(limit=1, offset=offset, saved_user=user if mode == 'saved' else None,
+            rows = self.store.list(limit=2, offset=offset, saved_user=user if mode == 'saved' else None,
                                    **({} if mode == 'saved' else selection))
             row, score = (rows[0] if rows else None), None
+            has_next = len(rows) > 1
         if not row:
-            await self.product.reply(update, tr('v_empty'), markup([[(tr('v_menu'), 'v:home')]]))
+            await self.product.reply(update, tr('v_empty'), markup([[(tr('v_back_search'), 'v:search')], [(tr('v_menu'), 'v:home')]]))
             return
         nonce = secrets.token_hex(4)
         context.user_data['vacancy_page'] = (nonce, mode, offset)
+        context.user_data['vacancy_navigation'] = {'id': row['id'], 'has_next': has_next, 'relevance': row.get('search_relevance')}
         await self.card(update, context, row, nonce, score)
 
     async def card(self, update, context, vacancy, nonce=None, score=None):
         tr = self.product.translator(update)
         lines = [tr('v_card', id=vacancy['id'])]
+        navigation = context.user_data.get('vacancy_navigation', {})
+        page = context.user_data.get('vacancy_page')
+        if navigation.get('id') == vacancy['id'] and page:
+            nonce = nonce or page[0]
+            relevance = navigation.get('relevance')
+            if relevance is not None:
+                lines.append(tr('v_search_high' if relevance >= 75 else 'v_search_medium'))
         for field in ('role', 'company', 'location'):
             if vacancy[field]:
                 lines.append(tr('v_' + field) + ': ' + vacancy[field])
@@ -90,7 +100,15 @@ class VacancyUI:
         if vacancy['source_url']:
             rows.insert(0, [InlineKeyboardButton(tr('v_open'), url=vacancy['source_url'])])
         if nonce:
-            rows.append([InlineKeyboardButton(tr('v_next'), callback_data='v:next:' + nonce)])
+            controls = []
+            if page and page[2] > 0:
+                controls.append(InlineKeyboardButton(tr('previous'), callback_data='v:previous:' + nonce))
+            if navigation.get('has_next', True):
+                controls.append(InlineKeyboardButton(tr('v_next'), callback_data='v:next:' + nonce))
+            if controls:
+                rows.append(controls)
+        if context.user_data.get('vacancy_filters', {}).get('search'):
+            rows.append([InlineKeyboardButton(tr('v_back_search'), callback_data='v:search')])
         rows.append([InlineKeyboardButton(tr('v_menu'), callback_data='v:home')])
         await self.product.reply(update, '\n'.join(lines), InlineKeyboardMarkup(rows))
 
@@ -134,12 +152,12 @@ class VacancyUI:
                 await self.admin_stats(update, context)
             elif action in {'latest', 'best', 'saved'}:
                 await self.listing(update, context, action)
-            elif action == 'next':
+            elif action in {'next', 'previous'}:
                 page = context.user_data.get('vacancy_page')
                 if not page or page[0] != parts[2]:
                     await self.product.reply(update, tr('v_stale'))
                 else:
-                    await self.listing(update, context, page[1], page[2] + 1)
+                    await self.listing(update, context, page[1], max(0, page[2] + (1 if action == 'next' else -1)))
             elif action == 'filters':
                 rows = [[(tr('v_' + field), 'v:input:' + field)] for field in ('location', 'salary_min', 'days')]
                 rows += [[(tr('v_source'), 'v:sources')], [(tr('clear_filters'), 'v:clear')], [(tr('v_menu'), 'v:home')]]

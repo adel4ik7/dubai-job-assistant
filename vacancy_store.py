@@ -3,7 +3,7 @@ import json
 import re
 from pathlib import Path
 from urllib.parse import urlsplit
-from services.vacancy_search import normalize_search, search_terms
+from services.vacancy_search import MIN_RELEVANCE, relevance_scorer
 
 
 SCHEMA = '''
@@ -186,13 +186,13 @@ class VacancyStore:
         if saved_user is None:
             clauses.append('(s.enabled=1 OR EXISTS(SELECT 1 FROM vacancies d JOIN vacancy_sources ds ON ds.id=d.source_id WHERE d.duplicate_of=v.id AND ds.enabled=1))')
         values = []
+        select = 'v.*,s.title AS source_title'
+        order = 'v.published_at DESC,v.id DESC'
         if search:
-            fields = ('role', 'company', 'raw_text', 'ocr_text', 'combined_text', 'location')
-            terms = search_terms(search)
-            clauses.append('(' + ' OR '.join(
-                f'instr(search_normalize(v.{field}),?)>0' for field in fields for term in terms
-            ) + ')' if terms else '0')
-            values.extend(term for field in fields for term in terms)
+            select += ',search_score(v.role,v.skills_json,v.combined_text,v.ocr_text,v.raw_text,v.company,v.location) AS search_relevance'
+            clauses.append('search_relevance>=?')
+            values.append(MIN_RELEVANCE)
+            order = 'search_relevance DESC,julianday(v.published_at) DESC,casefold(v.role),casefold(v.company),v.source_url'
         if location:
             clauses.append('instr(casefold(v.location),casefold(?))>0')
             values.append(location)
@@ -209,10 +209,11 @@ class VacancyStore:
             clauses.append('EXISTS(SELECT 1 FROM user_saved_vacancies u JOIN vacancies saved ON saved.id=u.vacancy_id WHERE (saved.id=v.id OR saved.duplicate_of=v.id) AND u.user_id=?)')
             values.append(saved_user)
         with self.db._connect() as conn:
-            conn.create_function('search_normalize', 1, normalize_search, deterministic=True)
+            if search:
+                conn.create_function('search_score', 7, relevance_scorer(search), deterministic=True)
             return [dict(r) for r in conn.execute(
-                'SELECT v.*,s.title AS source_title FROM vacancies v JOIN vacancy_sources s ON s.id=v.source_id WHERE ' +
-                ' AND '.join(clauses) + ' ORDER BY v.published_at DESC,v.id DESC LIMIT ? OFFSET ?',
+                'SELECT ' + select + ' FROM vacancies v JOIN vacancy_sources s ON s.id=v.source_id WHERE ' +
+                ' AND '.join(clauses) + ' ORDER BY ' + order + ' LIMIT ? OFFSET ?',
                 (*values, min(100, max(1, limit)), max(0, offset)))]
 
     def save(self, user_id, vacancy_id):

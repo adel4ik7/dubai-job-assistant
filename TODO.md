@@ -1,5 +1,20 @@
 # Dubai Job Assistant — TODO
 
+## Search Quality V2 — 2026-09-12
+- Audited clean main and fetched origin/main; Profile edit submenu is already done.
+- Weighted search evidence: exact/alias role, synonym role, parsed skills, raw/OCR/
+  combined text, company/location; whole-word profession matching, threshold 30,
+  isolated long-body mention suppression and generic-query seniority adjustment.
+- Sort by relevance then publication date, not vacancy ID. Query filters and
+  dedup eligibility retained; rank before pagination with no overall result cap.
+- Added Previous/Back to search, high/medium labels and next-page lookahead.
+  Regression traverses all 35 matching cards; saves preserve current navigation.
+- Verification: all 177 tests passed, including real local OCR; compileall passed.
+- Read-only check on the current local database: 37 visible cook-query matches,
+  ranked in about 0.03 seconds. No collection or user-data modification needed.
+- Next priorities from the attached request: source-quality CLI summary, UAE-only
+  location filtering, then alerts preview and CV template improvements. No APIs.
+
 ## Profile UX refactor — 2026-09-12
 - Profile overview now shows data and Edit/Language/Main menu only. New Edit screen
   lists all eight fields in two columns, with Done and Back returning to Profile.

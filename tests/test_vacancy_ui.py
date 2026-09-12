@@ -42,6 +42,28 @@ class VacancyUITests(unittest.IsolatedAsyncioTestCase):
     def labels(self):
         return [b.text for row in self.message.reply_text.call_args.kwargs['reply_markup'].inline_keyboard for b in row]
 
+    async def test_search_relevance_navigation_over_thirty_cards(self):
+        for index in range(1, 36):
+            self.store.insert(self.source, index, role='Cook', detection_status='vacancy', published_at=f'2026-08-{(index % 28)+1:02d}')
+        self.context.user_data['vacancy_filters'] = {'search': 'повар'}
+        bot.db.set_language(1, 'ru')
+        await self.click('v:latest')
+        self.assertIn(text('ru', 'v_search_high'), self.reply())
+        visited = []
+        for index in range(35):
+            visited.append(self.context.user_data['vacancy_navigation']['id'])
+            if index < 34:
+                await self.click('v:next:' + self.context.user_data['vacancy_page'][0])
+        self.assertEqual(len(set(visited)), 35)
+        self.assertNotIn(text('ru', 'v_next'), self.labels())
+        await self.click('v:previous:' + self.context.user_data['vacancy_page'][0])
+        self.assertEqual(self.context.user_data['vacancy_navigation']['id'], visited[-2])
+        bot.db.set_language(1, 'en')
+        await self.click('v:previous:' + self.context.user_data['vacancy_page'][0])
+        self.assertIn(text('en', 'v_search_high'), self.reply())
+        self.assertIn(text('en', 'v_back_search'), self.labels())
+        self.assertEqual(await self.click('v:search'), WAIT_VACANCY_INPUT)
+
     async def test_menu_cards_ru_en_and_no_empty_fields(self):
         self.add(text='Hiring analyst in Dubai. Send CV jobs@example.com')
         for language in ('ru', 'en'):

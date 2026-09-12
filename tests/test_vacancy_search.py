@@ -85,3 +85,48 @@ class VacancySearchTests(unittest.TestCase):
         self.assertEqual(self.ids("' OR 1=1 --"), [])
         self.assertEqual(self.ids('unknownprofession'), [])
         self.assertEqual(len(self.ids('')), 1)
+
+    def test_title_synonyms_outrank_body_and_company(self):
+        manager = self.add(role='Restaurant Manager', combined_text='Hiring manager to work with chef team.')
+        company = self.add(company='повар staffing')
+        ocr = self.add(ocr_text='Hiring Cook in Dubai')
+        skills = self.add(skills_json='["cook"]')
+        cdp = self.add(role='Chef de Partie')
+        commis = self.add(role='Commis Chef')
+        cook = self.add(role='Cook')
+        order = self.ids('повар')
+        for strong in (cdp, commis, cook):
+            self.assertLess(order.index(strong), order.index(ocr))
+            self.assertLess(order.index(strong), order.index(manager))
+            self.assertLess(order.index(strong), order.index(company))
+        self.assertLess(order.index(skills), order.index(ocr))
+
+    def test_specific_title_and_seniority(self):
+        generic = self.add(role='Chef')
+        exact = self.add(role='Chef de Partie')
+        alias = self.add(role='CDP')
+        senior = self.add(role='Executive Chef')
+        self.assertEqual(self.ids('chef de partie')[:2], [exact, alias])
+        self.assertLess(self.ids('повар').index(generic), self.ids('повар').index(senior))
+        self.assertIn(senior, self.ids('повар'))
+
+    def test_random_mention_threshold_and_word_boundaries(self):
+        weak = self.add(role='Manager', combined_text='General business administration ' * 40 + ' chef')
+        accidental = self.add(role='Cookbook author', raw_text='Review cookbooks')
+        self.assertNotIn(weak, self.ids('повар'))
+        self.assertNotIn(accidental, self.ids('повар'))
+        found = self.add(raw_text='Wanted: a cook for restaurant')
+        self.assertIn(found, self.ids('повар'))
+
+    def test_relevance_then_publication_with_more_than_thirty_results(self):
+        newest = self.add(role='Cook', published_at='2026-09-12T08:00:00+00:00')
+        older = self.add(role='Cook', published_at='2026-09-11T08:00:00+00:00')
+        weak = self.add(raw_text='Wanted cook', published_at='2026-09-13T08:00:00+00:00')
+        for i in range(32):
+            self.add(role='Cook', published_at='2026-09-10T08:00:00+00:00')
+        results = self.ids('cook')
+        self.assertEqual(len(results), 35)
+        self.assertEqual(results[:2], [newest, older])
+        self.assertEqual(results[-1], weak)
+        paged = [vid for offset in range(0, 35, 7) for vid in self.ids('cook', limit=7, offset=offset)]
+        self.assertEqual(paged, results)

@@ -366,5 +366,8 @@
   "profile_edit_visa_status": "🪪 UAE visa status",
   "profile_edit_years_experience": "📈 Experience",
   "profile_edit_english_level": "🇬🇧 English level",
-  "profile_edit_notes": "📝 Notes"
+  "profile_edit_notes": "📝 Notes",
+  "v_back_search": "Back to search",
+  "v_search_high": "Search relevance: high",
+  "v_search_medium": "Search relevance: medium"
 }
