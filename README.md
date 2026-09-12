@@ -481,9 +481,10 @@ names the CV used and offers four follow-up actions:
 
 ### Applications
 
-### Apply preparation (no email sending)
+### Apply Pack / Пакет для отклика (manual sending only)
 
-Open **Apply — prepare / Откликнуться — подготовить** on a vacancy card or an
+Open **📨 Apply / Откликнуться** on a vacancy card (including matching jobs and
+notifications) or an
 application's detail screen. The review shows role, company, extracted recipient
 email (or an explicit missing-email message), selected CV, suggested subject and
 editable message. Change the CV without changing your global active-CV selection.
@@ -495,6 +496,29 @@ update the same preparation. Reopen Apply to review saved text. Cancel, /cancel 
 leaving this screen discards unconfirmed edits; previously confirmed preparation
 remains. Confirmation rechecks CV ownership/availability and changed vacancy details.
 Missing email is allowed in a saved preparation, but remains explicitly flagged.
+
+The pack includes location, known salary, source URL, selected CV, subject and
+editable message. Active CV is the initial default; a saved preparation retains
+its prior selection if it still exists. Choose another saved CV, download the
+selected original file, or open Create CV when none is available. File formats
+and filenames remain those of the saved CV; no forced PDF conversion is applied.
+Rule-based RU/EN defaults mention only the actual role/company and a known name
+from the selected built CV or profile. Phone/email are included only when supplied
+in the selected structured CV. Unknown identity uses a neutral greeting/sign-off;
+unknown company/email are never invented. Custom text is preserved on CV changes.
+Copy buttons send the value in an escaped, copyable code block in the private chat;
+they do not claim to write to the device clipboard.
+
+**✅ Mark as sent / Отметить как отправленный** is the user's confirmation of a
+manual application, NOT an email send. It creates or reuses their application by
+vacancy ID (canonical vacancy) or an existing original source URL, recording
+`selected_cv_id`, `recipient_email`, `email_subject`, `email_body`, `source_url`,
+status `applied`, date and UTC `applied_at`/`last_contact_at`. `follow_up_at` remains
+NULL for future work. A unique owner/vacancy index and atomic update prevent duplicate
+records; repeated marking preserves the first applied timestamp and later tracker
+statuses. Unavailable fields remain empty/NULL. Confirm/save-only remains available
+and still makes no tracker status change. All records are removed by the existing
+confirmed `/delete_my_data` flow. No SMTP, email API or follow-up scheduler exists.
 `/delete_my_data` also removes these records. No SMTP credentials, server setup or
 email provider is needed. The module is a foundation for future explicit sending.
 

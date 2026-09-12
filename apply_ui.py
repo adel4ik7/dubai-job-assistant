@@ -1,5 +1,7 @@
 """Reviewable, cancellable application preparation. Confirm only saves locally."""
 import secrets
+from html import escape
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from telegram.ext import ConversationHandler
 from product_ui import keyboard
@@ -27,10 +29,30 @@ class ApplyUI:
                  tr('ap_recipient') + ': ' + (draft['recipient_email'] or tr('ap_no_email')),
                  tr('ap_cv') + ': ' + (resume['filename'] if resume else tr('ap_cv_missing')),
                  tr('ap_subject') + ': ' + draft['subject'], tr('ap_message') + ':\n' + draft['message']]
-        await self.product.reply(update, '\n\n'.join(lines), keyboard([
+        for field,key in (('location','v_location'),('salary','v_salary'),('source_url','field_source_url')):
+            if draft.get(field):
+                lines.insert(4, tr(key)+': '+draft[field])
+        rows = [
             [(tr('ap_choose_cv'), f'ap:cvs:{token}:0')],
             [(tr('ap_edit_subject'), f'ap:edit:{token}:subject'), (tr('ap_edit_message'), f'ap:edit:{token}:message')],
-            [(tr('ap_confirm'), f'ap:confirm:{token}'), (tr('cancel'), f'ap:cancel:{token}')]]))
+            [(tr('pk_copy_email'), f'ap:copy:{token}:recipient_email'), (tr('pk_copy_subject'), f'ap:copy:{token}:subject')],
+            [(tr('pk_copy_message'), f'ap:copy:{token}:message')],
+            [(tr('pk_sent'), f'ap:sent:{token}')],
+            [(tr('ap_confirm'), f'ap:confirm:{token}'), (tr('cancel'), f'ap:cancel:{token}')]]
+        if not resume:
+            rows.insert(1,[(tr('cb_menu'),'cb:home')])
+        else:
+            rows.insert(1,[(tr('pk_download'),f'ap:download:{token}')])
+        markup = keyboard(rows)
+        if draft.get('source_url'):
+            markup = InlineKeyboardMarkup([*markup.inline_keyboard,[InlineKeyboardButton(tr('v_open'),url=draft['source_url'])]])
+        # Keep long editable messages within Telegram's per-message limit.
+        summary = '\n\n'.join(lines)
+        if len(summary)>3900:
+            await self.product.reply(update, summary[:3500])
+            await self.product.reply(update, summary[3500:], markup)
+        else:
+            await self.product.reply(update, summary, markup)
         return END
 
     async def buttons(self, update, context):
@@ -55,6 +77,24 @@ class ApplyUI:
                     context.user_data.pop(key, None)
                 await self.product.reply(update, tr('ap_prepared'), self.product.menu(update))
                 return END
+            if action == 'copy' and parts[3] in {'recipient_email','subject','message'}:
+                value = context.user_data['apply_draft'][parts[3]]
+                if value:
+                    await update.effective_message.reply_text('<pre>'+escape(value)+'</pre>',parse_mode='HTML')
+                else:
+                    await self.product.reply(update,tr('ap_no_email'))
+                return END
+            if action == 'download':
+                resume = self.flow.cv(uid,context.user_data['apply_draft']['resume_id'])
+                with self.flow.files.safe_path(uid,resume['file_path']).open('rb') as document:
+                    await update.effective_message.reply_document(document=document,filename=resume['filename'])
+                return END
+            if action == 'sent':
+                app_id = self.flow.mark_sent(uid, context.user_data['apply_draft'])
+                for key in ('apply_draft','apply_token','apply_field'):
+                    context.user_data.pop(key,None)
+                await self.product.reply(update,tr('pk_sent_done',id=app_id),self.product.menu(update))
+                return END
             if action == 'edit' and parts[3] in {'subject', 'message'}:
                 context.user_data['apply_field'] = parts[3]
                 context.user_data.pop('apply_token', None)
@@ -70,11 +110,19 @@ class ApplyUI:
                 if len(rows) > 5:
                     buttons.append([(tr('next'), f'ap:cvs:{token}:{page+1}')])
                 buttons.append([(tr('ap_review'), f'ap:review:{token}')])
+                if not rows:
+                    buttons.append([(tr('cb_menu'),'cb:home')])
                 await self.product.reply(update, tr('ap_choose_cv') if rows else tr('ap_cv_missing'), keyboard(buttons))
                 return END
             if action == 'cv':
                 resume = self.flow.cv(uid, int(parts[3]))
-                context.user_data['apply_draft']['resume_id'] = resume['id']
+                draft = context.user_data['apply_draft']
+                draft['resume_id'] = resume['id']
+                subject,message = self.flow.defaults(uid,resume['id'],draft,self.product.language(update))
+                for field,value in (('subject',subject),('message',message)):
+                    if draft[field] == draft.get('default_'+field):
+                        draft[field] = value
+                    draft['default_'+field] = value
                 return await self.show(update, context)
             if action == 'review':
                 return await self.show(update, context)

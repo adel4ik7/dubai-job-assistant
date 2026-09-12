@@ -123,7 +123,7 @@ class JobAlertsTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('Chef de Partie', text)
             self.assertIn('Профессия совпадает' if lang=='ru' else 'Profession matches', text)
             self.assertEqual([b.callback_data for row in markup.inline_keyboard for b in row],
-                [f'v:open:{vid}', f'v:analyse:{vid}', f'v:save:{vid}', f'v:convert:{vid}', 'al:off'])
+                [f'v:open:{vid}', f'ap:vacancy:{vid}', f'v:analyse:{vid}', f'v:save:{vid}', f'v:convert:{vid}', 'al:off'])
         self.db.set_language(1, 'ru')
         await deliver_one(self.bot, self.store, self.now+3)
         self.assertIn('Новая вакансия', self.bot.send_message.call_args.kwargs['text'])

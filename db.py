@@ -121,6 +121,12 @@ class Database:
                 conn.execute("UPDATE applications SET status=? WHERE status=?", (code, legacy))
 
             columns = {r["name"] for r in conn.execute("PRAGMA table_info(applications)")}
+            for name, kind in {'vacancy_id':'INTEGER', 'selected_cv_id':'INTEGER',
+                               'recipient_email':'TEXT', 'email_subject':'TEXT', 'email_body':'TEXT',
+                               'applied_at':'TEXT', 'last_contact_at':'TEXT', 'follow_up_at':'TEXT'}.items():
+                if name not in columns:
+                    conn.execute(f'ALTER TABLE applications ADD COLUMN {name} {kind}')
+            conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS application_vacancy_owner ON applications(telegram_id,vacancy_id) WHERE vacancy_id IS NOT NULL')
             for name in ("source", "salary", "date_applied", "vacancy_text", "source_url"):
                 if name not in columns:
                     conn.execute(f"ALTER TABLE applications ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")

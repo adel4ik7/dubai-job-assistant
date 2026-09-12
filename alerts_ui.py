@@ -31,6 +31,7 @@ def notification(language, preferences, vacancy):
     vid = vacancy['id']
     return '\n'.join(lines), keyboard([
         [(tr('al_open'), f'v:open:{vid}')],
+        [(tr('ap_apply'), f'ap:vacancy:{vid}')],
         [(tr('v_analyse'), f'v:analyse:{vid}')],
         [(tr('v_save'), f'v:save:{vid}'), (tr('v_convert'), f'v:convert:{vid}')],
         [(tr('al_disable'), 'al:off')]])
@@ -129,6 +130,7 @@ class AlertsUI:
         if vacancy['source_url']:
             buttons.append([InlineKeyboardButton(tr('mj_source'), url=vacancy['source_url'])])
         buttons += [[InlineKeyboardButton(tr('mj_analyse'), callback_data=f'v:analyse:{vid}')],
+                    [InlineKeyboardButton(tr('ap_apply'), callback_data=f'ap:vacancy:{vid}')],
                     [InlineKeyboardButton(tr('mj_save'), callback_data=f'al:save:{selection["token"]}:{index}'),
                      InlineKeyboardButton(tr('mj_apply'), callback_data=f'v:convert:{vid}')]]
         controls = []

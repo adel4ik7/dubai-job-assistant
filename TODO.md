@@ -1,5 +1,23 @@
 # Dubai Job Assistant — TODO
 
+## Apply Pack — 2026-09-12
+- Extended existing Apply preparation without adding email transport: vacancy data,
+  explicit missing email, active/saved CV selection and download, Create CV link,
+  safe RU/EN subject/message defaults using only supplied identity/contact facts.
+- Copy email/subject/body uses escaped private-chat code blocks. Custom edits survive
+  CV changes. Added Apply to notification and matching-job cards as well.
+- Explicit Mark as sent creates/reuses the user's tracker record, canonical vacancy
+  link, selected CV ID, recipient/subject/body/source URL, applied status/date and
+  UTC applied_at/last_contact_at. follow_up_at nullable; no reminders or email sending.
+- Additive application columns and unique owner/vacancy index. Repeated marking
+  does not create duplicates or reset later tracker progress. Legacy Confirm remains
+  save-only; old preparations and application flows preserved. Privacy reuses deletion.
+- Tests cover identity/unknown fields, RU/EN defaults/UI, alternate CV/download,
+  missing CV, copying, manual sent/idempotency/source linking and old behavior.
+- Verification: baseline 210 tests; final full suite 217 tests passed including
+  real local OCR. compileall, diff check and secrets/unignored-file audit passed.
+- No next major stage: actual email sending stays a separate future request.
+
 ## Matching jobs now — 2026-09-12
 - Added RU/EN retrospective selection inside Job Alerts using saved roles/aliases,
   location, UAE only and minimum salary. Works when alerts are OFF, without touching
