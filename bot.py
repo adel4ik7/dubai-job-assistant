@@ -12,6 +12,8 @@ from product_ui import ProductUI, WAIT_FORM, WAIT_SEARCH
 from vacancy_ui import VacancyUI, WAIT_VACANCY_INPUT
 from cv_builder_ui import CVBuilderUI, WAIT_CV_BUILDER
 from apply_ui import ApplyUI, WAIT_APPLY
+from alerts_ui import AlertsUI, WAIT_ALERTS
+from services.alert_sender import start_sender, stop_sender
 from services.ai import AIError, AIService, OpenAIProvider, TASKS, message_chunks
 from services.matcher import analyse_match, format_analysis
 from services.resume_parser import ResumeParseError, extract_text
@@ -33,6 +35,7 @@ def make_main_menu(language='en'):
         [InlineKeyboardButton(locale_text(language, 'cb_menu'), callback_data='cb:home')],
         [InlineKeyboardButton(locale_text(language, 'menu_analyse'), callback_data='analyse_vacancy')],
         [InlineKeyboardButton(locale_text(language, 'v_menu'), callback_data='v:home')],
+        [InlineKeyboardButton(locale_text(language, 'al_menu'), callback_data='al:home')],
         [InlineKeyboardButton(locale_text(language, 'menu_applications'), callback_data='p:apps:0'), InlineKeyboardButton(locale_text(language, 'menu_dashboard'), callback_data='p:dashboard')],
         [InlineKeyboardButton(locale_text(language, 'menu_help'), callback_data='help'), InlineKeyboardButton(locale_text(language, 'language_button'), callback_data='p:language')]])
 
@@ -77,6 +80,10 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await query.message.reply_text(tr('please_use_a_private_chat_with_the_bot'))
         return ConversationHandler.END
     await ensure_user(update)
+    if query.data.startswith('al:'):
+        reset_pending(context)
+        return await alerts_ui.buttons(update, context)
+    context.user_data.pop('alert_field', None)
     if query.data.startswith('ap:'):
         for key in ('builder_form', 'builder_delete', 'form', 'ai_action', 'vacancy_input'):
             context.user_data.pop(key, None)
@@ -212,7 +219,11 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tr = product.translator(update)
     return_to_edit = context.user_data.get('form', {}).get('return_to') == 'profile_edit'
+    return_to_alerts = bool(context.user_data.get('alert_field'))
     reset_pending(context)
+    if return_to_alerts:
+        await product.reply(update, tr('cancelled'))
+        return await alerts_ui.menu(update, context)
     context.user_data.pop('ai_action', None)
     if return_to_edit:
         await update.message.reply_text(tr('cancelled'))
@@ -258,7 +269,7 @@ async def ai_vacancy_received(update: Update, context: ContextTypes.DEFAULT_TYPE
     return await run_ai(update, context, action, vacancy)
 
 def reset_pending(context) -> None:
-    for key in ('form', 'delete_confirmation', 'cv_delete', 'ai_action', 'vacancy_input', 'builder_form', 'builder_delete', 'apply_draft', 'apply_token', 'apply_field'):
+    for key in ('alert_field', 'form', 'delete_confirmation', 'cv_delete', 'ai_action', 'vacancy_input', 'builder_form', 'builder_delete', 'apply_draft', 'apply_token', 'apply_field'):
         context.user_data.pop(key, None)
 
 def cleanup_failed_upload(path: Path) -> None:
@@ -273,7 +284,7 @@ async def cv_received(update, context):
     return ConversationHandler.END
 
 def build_application(config: Settings | None=None) -> Application:
-    global settings, db, ai, product, vacancies, builder_ui, apply_ui
+    global settings, db, ai, product, vacancies, builder_ui, apply_ui, alerts_ui
     settings = config or load_settings()
     db = Database(settings.database_path)
     ai = AIService(None, db, settings.ai_daily_limit)
@@ -281,7 +292,9 @@ def build_application(config: Settings | None=None) -> Application:
     builder_ui = CVBuilderUI(product)
     apply_ui = ApplyUI(product)
     vacancies = VacancyUI(product, settings.vacancy_match_window, settings.admin_telegram_id)
-    app = Application.builder().token(settings.telegram_bot_token).concurrent_updates(False).build()
+    alerts_ui = AlertsUI(product)
+    app = Application.builder().token(settings.telegram_bot_token).concurrent_updates(False).post_init(start_sender).post_stop(stop_sender).build()
+    app.bot_data['job_alerts'] = alerts_ui.store
     conversation = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(buttons),
@@ -293,6 +306,7 @@ def build_application(config: Settings | None=None) -> Application:
             MessageHandler(filters.Document.ALL & filters.ChatType.PRIVATE, cv_received),
         ],
         states={
+            WAIT_ALERTS: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, alerts_ui.receive)],
             WAIT_APPLY: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, apply_ui.receive)],
             WAIT_CV_BUILDER: [MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND & filters.ChatType.PRIVATE, builder_ui.receive)],
             WAIT_VACANCY_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, vacancies.input_received)],

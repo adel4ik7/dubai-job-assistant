@@ -192,11 +192,15 @@ class VacancyUI:
             elif action == 'source':
                 context.user_data.setdefault('vacancy_filters', {})['source_id'] = int(parts[2])
                 await self.listing(update, context)
-            elif action in {'analyse', 'save', 'remove', 'convert'}:
+            elif action in {'open', 'analyse', 'save', 'remove', 'convert'}:
                 vacancy = self.store.get(int(parts[2]))
                 if not vacancy or vacancy['detection_status'] not in {'vacancy', 'probably_vacancy'}:
                     raise ValueError
-                if action == 'analyse':
+                if action == 'open':
+                    context.user_data.pop('vacancy_page', None)
+                    context.user_data.pop('vacancy_navigation', None)
+                    await self.card(update, context, vacancy)
+                elif action == 'analyse':
                     cv = self.db.active_resume(update.effective_user.id)
                     if cv:
                         await self.product.report(update, context, vacancy['combined_text'][:12000], cv)

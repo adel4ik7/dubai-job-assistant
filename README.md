@@ -1,5 +1,54 @@
 # Dubai Job Assistant — v0.4
 
+## Personal Job Alerts / Персональные уведомления
+
+Open **🔔 Job Alerts / Уведомления** in the main menu. Set professions and optional
+extra keywords/aliases (up to 12 comma/newline-separated phrases in each list),
+workplace location, UAE only and optional minimum salary in AED, then enable.
+Example: `Повар`, `Dubai`, `5000`, UAE only, ON. RU/EN profession synonyms work
+automatically. Roles and extra aliases are alternatives; location and salary are
+mandatory additional filters. Missing/non-AED salary is excluded when a minimum
+is set. OCR/body-only matches must be stronger than incidental unrelated-role or
+company-only mentions. Settings and notification cards follow the user's language.
+
+Notifications are **OFF by default**. Enabling or changing settings records both a
+publication-time cutoff and the current last vacancy ID. Only newly inserted posts
+published after that cutoff and no more than 24 hours old qualify. No existing
+database rows are replayed. Historical backfill, missing/future dates, duplicates,
+disabled sources and reprocessing updates do not generate old-vacancy alerts.
+Queued alerts are rechecked against current settings/source/detection before send;
+they expire after 24 hours. Switching OFF cancels pending messages. One request
+already in flight may still arrive after switching off or deleting data.
+
+Run the usual two local processes, `python bot.py` and `python collector.py`.
+Restart both after updating the code. No new service, API key or dependency is
+needed. Collector's vacancy insertion transaction uses the existing search and
+location rules to write matching `(user, vacancy)` deliveries to a SQLite outbox;
+the bot runs its delivery worker automatically while polling. Nothing is sent from
+the user Telegram account. If the bot is temporarily offline, fresh pending alerts
+survive a restart. No email or automatic job application is sent.
+
+Limits persist across restarts and concurrent workers: one send attempt every two
+seconds globally, at least 60 seconds between attempts for each user and at most
+10 attempts per user in a rolling 24 hours. A Telegram `RetryAfter` pauses all
+alerts for the requested interval; only this explicit rejection is retried. Blocked
+users are disabled automatically. States `pending`, `sending`, `sent`, `failed`,
+`unknown`, `cancelled`, `expired` record delivery history; confirmed messages store
+Telegram message IDs. Unique user/vacancy and user/content-hash keys prevent repeat
+alerts for the same vacancy and cross-channel duplicates.
+
+Telegram sendMessage has no idempotency key: a timeout/crash can leave it unclear
+whether Telegram accepted a message. To avoid duplicate notifications, ambiguous
+attempts and interrupted `sending` rows are **never automatically resent** (stale
+`sending` becomes `unknown` after five minutes). This may lose an occasional alert;
+the vacancy remains available in the normal Vacancies section. No delivery exception,
+recipient ID, contact details or message contents are logged by this worker.
+
+Each card explains the match and offers Open vacancy, Compare with CV, Save,
+Add to applications and Disable notifications. These reuse the existing flows.
+`/delete_my_data`, after confirmation, deletes alert preferences and delivery history
+alongside the existing private data; public vacancies remain.
+
 ## v0.4 collector (separate process)
 
 Obtain your own API ID / hash at https://my.telegram.org under **API development

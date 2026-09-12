@@ -1,17 +1,42 @@
 # Dubai Job Assistant — TODO
 
+## Personal Job Alerts — 2026-09-12
+- Added RU/EN Job Alerts menu: professions, extra keyword/alias lists, location,
+  UAE only, optional minimum AED salary, ON/OFF and current settings; /cancel.
+- Defaults OFF. Enabling or editing settings establishes publication-time and
+  vacancy-ID cutoffs; no existing posts are replayed. Enqueue only on initial
+  vacancy insertion, never on retry/update. Unknown/future/older-than-24h dates,
+  duplicates and disabled sources excluded. Role synonym/relevance and location
+  rules reused; unrelated-body/company-only evidence cannot trigger alerts.
+- SQLite outbox is written in the same transaction as collector vacancy insertion.
+  Bot starts/stops an independent async sender with its polling lifecycle. Pending
+  rows are revalidated; OFF cancels them, stale rows expire after 24 hours.
+- Persistent limits: global 2 seconds, user 60 seconds and 10 attempts/rolling 24h.
+  Separate attempt history counts every FloodWait retry, not just distinct posts.
+  Telegram RetryAfter pauses globally; Forbidden disables the subscription.
+- Unique user/vacancy and user/content keys, atomic claims and hash rechecks prevent
+  duplicate notifications. Ambiguous network/crash outcomes are not retried;
+  a notification can be missed in that case, rather than duplicated. Details and
+  the one-in-flight limitation are documented in README.
+- Cards explain matching evidence and reuse vacancy open/analyse/save/application
+  actions; disable action applies to the recipient's settings. No email sending.
+- Privacy deletes preferences, delivery/attempt history with existing user data.
+  Monotonic delivery IDs prevent late replies after deletion modifying new rows.
+- Tests include actual collector -> persisted queue, RU/EN setup/navigation/cards,
+  old/backfill/duplicate exclusion, OCR matching, filters, restart safety, quotas,
+  FloodWait, ambiguous errors, blocked users, lifecycle and privacy races.
+- Verification: baseline 184 tests; final full suite 203 tests passed including
+  real local OCR. compileall, pip check, diff and secrets/unignored-file audit passed.
+- Next optional stage: visual CV template redesign in services/cv_export.py and
+  templates/template_*/style.json, with synthetic PDFs for visual comparison.
+  Existing CV Builder/data model/flow unchanged. No live notifications were sent
+  during tests; restart bot.py and collector.py to use alerts, then opt in via menu.
+
 ## Exact continuation checkpoint — 2026-09-12
 - Attached request priorities 1–3 are complete (search quality, source quality,
   UAE location filtering). Priority 6 Profile UX was already complete and its
   regressions remain green. No unfinished changes to these stages remain.
-- Priority 4 Job alerts has NOT been started. Next implementation: create
-  `services/job_alerts.py` for persisted per-user preferences and bounded matching
-  preview using the existing synonym/location/search layer. Add additive tables
-  in `db.py` for preferences and unique `(user_id, vacancy_id)` delivery history;
-  include both in the existing delete-user-data transaction. Add a shared RU/EN
-  preview/preferences screen (new `alerts_ui.py`) and tests. Keep actual sending
-  disabled; design explicit delivery states/rate limits before wiring notifications
-  to `collector.py:Collector.process_message`. Do not mark previews as deliveries.
+- Priority 4 Job Alerts is complete; see the current milestone above.
 - Priority 5 CV visual restyling has NOT been done in this run. Existing CV Builder,
   three renderers and active-CV integration work, but visual improvement/demo PDFs
   remain. Start from `services/cv_export.py` and `templates/template_*/style.json`;
@@ -21,7 +46,7 @@
   `.\\.venv\\Scripts\\python.exe collector.py --source-quality`
   `$env:RUN_OCR_INTEGRATION='1'; .\\.venv\\Scripts\\python.exe -m unittest discover -s tests -q`
   `.\\.venv\\Scripts\\python.exe -m compileall .`
-- Baseline for the next stage: 184 passing tests, including real local OCR;
+- Previous checkpoint baseline: 184 passing tests, including real local OCR;
   compileall and dependency check passed. Commit/push each next milestone and
   keep secrets/session/database/upload/media files out of Git.
 

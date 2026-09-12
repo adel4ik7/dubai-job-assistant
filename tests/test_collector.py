@@ -75,6 +75,23 @@ class CollectorTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.store.has_message(self.source_id, 3))
         self.assertEqual(self.store.get(1)['processing_error'], 'pipeline_failed')
 
+    async def test_new_collected_vacancy_enqueues_alert_but_retry_does_not(self):
+        from services.job_alerts import JobAlerts
+        from services.vacancy_pipeline import analyze_text
+        now = datetime.now(timezone.utc).timestamp()
+        alerts = JobAlerts(self.db)
+        alerts.update(1, 'roles', 'Analyst', now=now-2)
+        alerts.update(1, 'enabled', True, now=now-2)
+        async def process(client, source, message):
+            return analyze_text(message.message)
+        self.collector.processor = process
+        source = self.store.sources()[0]
+        message = self.message(1, 'Role: Analyst\nHiring in Dubai. Salary 6000 AED. Send CV jobs@example.com')
+        await self.collector.process_message(source, message)
+        await self.collector.process_message(source, message, force=True)
+        with self.db._connect() as conn:
+            self.assertEqual(conn.execute('SELECT COUNT(*) FROM alert_deliveries').fetchone()[0], 1)
+
     async def test_flood_wait_respected_and_private_group_refused(self):
         self.client.get_entity.side_effect = [errors.FloodWaitError(None, capture=12), self.entity]
         self.client.get_messages.return_value = [self.message(1)]

@@ -6,6 +6,7 @@ from datetime import date
 
 from statuses import STATUSES, LEGACY_STATUSES, normalize_status
 from vacancy_store import SCHEMA as VACANCY_SCHEMA
+from services.job_alerts import SCHEMA as ALERT_SCHEMA
 PROFILE_FIELDS = ("full_name", "desired_role", "desired_salary", "current_location",
                   "visa_status", "years_experience", "english_level", "notes")
 
@@ -112,6 +113,7 @@ class Database:
         with self._connect() as conn:
             conn.executescript(SCHEMA)
             conn.executescript(VACANCY_SCHEMA)
+            conn.executescript(ALERT_SCHEMA)
             user_columns = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
             if "language" not in user_columns:
                 conn.execute("ALTER TABLE users ADD COLUMN language TEXT DEFAULT NULL")
@@ -305,7 +307,7 @@ class Database:
     def delete_user_records(self, telegram_id: int) -> None:
         with self._connect() as conn:
             conn.execute('DELETE FROM user_saved_vacancies WHERE user_id=?', (telegram_id,))
-            for table in ("apply_preparations", "cv_drafts", "profiles", "active_resumes", "resumes", "applications", "ai_usage", "users"):
+            for table in ("alert_attempts", "alert_deliveries", "alert_preferences", "apply_preparations", "cv_drafts", "profiles", "active_resumes", "resumes", "applications", "ai_usage", "users"):
                 conn.execute(f"DELETE FROM {table} WHERE telegram_id=?", (telegram_id,))
 
     def reserve_ai_attempt(self, telegram_id: int, day: str, limit: int) -> bool:

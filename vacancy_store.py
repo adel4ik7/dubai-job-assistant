@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from services.vacancy_search import MIN_RELEVANCE, relevance_scorer
 from services.vacancy_locations import UAE_LOCATIONS, location_matcher, recognized_locations
+from services.job_alerts import enqueue_new
 
 
 SCHEMA = '''
@@ -173,6 +174,7 @@ class VacancyStore:
             columns = ['source_id', 'source_message_id', *values, 'duplicate_of']
             cur = conn.execute(f"INSERT INTO vacancies({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})",
                                (source_id, message_id, *values.values(), duplicate))
+            enqueue_new(conn, cur.lastrowid)
             return cur.lastrowid, True
 
     def get(self, vacancy_id):
