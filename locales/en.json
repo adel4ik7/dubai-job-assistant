@@ -329,7 +329,7 @@
   "cb_copy_en": "Create EN version",
   "cb_document_options": "Document: {document_language} · {template}",
   "cb_translation_notice": "An independent language version was created. Headings use the selected language; your text is copied unchanged. Edit the sections with your own translation.",
-  "cb_template_hint": "Choose a template. Modern and Professional use two columns. Classic ATS uses a single text column and omits photos for simpler parsing. No layout guarantees acceptance by every ATS.",
+  "cb_template_hint": "Modern: blue header and two columns. Professional: portrait sidebar and an experience-led main column. Classic ATS: a simple single text column. Photos are optional in every template. No layout guarantees acceptance by every ATS.",
   "ap_apply": "📨 Apply",
   "ap_title": "📨 Apply Pack",
   "ap_no_send": "Preview only. Confirm saves locally and does not send email or mark the application as Applied.",

@@ -1,1 +1,11 @@
-{"name": "Modern", "layout": "modern", "font_size": 10, "margin_mm": 18, "heading_size": 12, "sidebar_mm": 66, "gap_mm": 8, "accent": "#234C5C", "sidebar_background": "#EEF3F5"}
+{
+  "name": "Modern",
+  "layout": "modern",
+  "font_size": 10,
+  "margin_mm": 16,
+  "heading_size": 10,
+  "sidebar_mm": 54,
+  "gap_mm": 12,
+  "accent": "#2453A6",
+  "sidebar_background": "#FFFFFF"
+}

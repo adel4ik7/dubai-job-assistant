@@ -1,1 +1,11 @@
-{"name": "Classic ATS", "layout": "classic", "font_size": 10.5, "margin_mm": 18, "heading_size": 12, "accent": "#000000"}
+{
+  "name": "Classic ATS",
+  "layout": "classic",
+  "font_size": 10,
+  "margin_mm": 16,
+  "heading_size": 10,
+  "accent": "#334C5C",
+  "sidebar_mm": 34,
+  "gap_mm": 12,
+  "sidebar_background": "#FFFFFF"
+}

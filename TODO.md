@@ -1,5 +1,32 @@
 # Dubai Job Assistant — TODO
 
+## CV visual redesign — 2026-09-13
+- Rendering-only redesign of Modern Blue, Professional and Classic ATS from the
+  three supplied visual references, without their branding or people/demo text.
+- Modern: blue identity header, optional overlapping PDF portrait, narrow sidebar.
+  Professional: large portrait/name sidebar and grey-blue experience-led headings.
+  Classic: conservative single text column, optional photo beside the name, rules,
+  compact contact/skills/language lists and no layout tables or skill bars.
+- Bold Unicode typography, factual role/company/date hierarchy, empty-section
+  omission, photo/no-photo adaptation and full-width experience continuation.
+  Existing plain_text/active-CV evidence, wizard and DB are unchanged.
+- Saved nine PDF + nine editable DOCX examples in examples/cv_redesign: EN with
+  synthetic portrait, RU without photo, and long RU for each template. Medium
+  examples are one page; long examples are three pages in both PDF and Word.
+  All pages visually inspected, including Cyrillic and long links; PDF geometry
+  check found no text outside the page in either native or Word-exported PDFs.
+  Updated three template previews and the RU/EN template description only.
+- Added regressions for unchanged data/evidence, factual hierarchy, medium-page
+  count, long identity, no-photo adaptation and editable full-width continuation.
+- Final validation: all 244 tests passed including local OCR, compileall and pip
+  check passed. Secrets audit includes DOCX XML and found no private/runtime paths
+  or configured secret values in tracked/unignored files. Implementation and demo
+  validation complete; commit title: Redesign CV layouts and add verified PDF DOCX samples.
+- Exact next step after delivery: compare the three PDFs in examples/cv_redesign,
+  then export an existing CV with the chosen template from Telegram. Already
+  downloaded files remain unchanged; re-export to get the new appearance.
+  No other module is part of this milestone.
+
 ## Repository audit and local runtime checkpoint — 2026-09-13
 - Latest feature is Share Vacancy, committed and pushed as 31aa2aa. Job Alerts,
   Matching jobs now, Apply Pack and application follow-up/interviews are complete.

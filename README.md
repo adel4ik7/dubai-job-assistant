@@ -451,14 +451,31 @@ sent. `services/cv_export.py` maps factual data into document blocks and renders
 `templates/` holds template settings separately from Telegram/business logic.
 
 Choose **Modern**, **Professional** or **Classic ATS** from the CV preview.
-Modern uses a shaded sidebar and two columns; Professional uses a narrow text
-sidebar and a wider experience column. Both support an optional square-cropped
-photo without stretching. Classic ATS uses one text column, no photos, no layout
-tables, no skill bars or decorative graphics. It is the default for new drafts.
+Modern Blue uses a saturated blue identity header with an optional overlapping
+portrait in PDF, a narrow summary/skills sidebar and the main experience column.
+Professional uses a large portrait above the name in a narrow sidebar and restrained
+grey-blue section headings in the wider experience column. Classic ATS uses a
+single text column, a compact identity header, optional portrait and thin section
+rules, without layout tables or skill bars. It is the default for new drafts.
+Photos are cropped without stretching, slightly above center, with EXIF orientation
+applied. Missing photos do not reserve a placeholder. Unknown/empty sections vanish.
 PDF exports retain selectable Unicode text and use automatic A4 pagination.
 DOCX exports retain editable styled text; the two-column versions use a fixed-width
-borderless layout table, while Classic ATS uses ordinary paragraphs only.
+borderless first-page layout table, while Classic ATS uses ordinary paragraphs
+and an optional anchored photo only. Longer experience continues at full width after
+the sidebar. PDF and Word use their own layout metrics: the DOCX transition is
+estimated conservatively by complete items and remains editable. A very long single
+item or sidebar can still span pages. No content is truncated to fit a page.
 PDF and Word page breaks may differ; templates are not guarantees of ATS acceptance.
+
+See [the visual comparison samples](examples/cv_redesign/README.md): each template
+has an English PDF/DOCX with an illustrated placeholder portrait, a Russian version
+without a photo and a three-page Russian stress sample. All example facts are
+synthetic and are never inserted into a user's CV. Regenerate with
+`.\.venv\Scripts\python.exe examples/cv_redesign/generate.py`.
+PDF pages and Word-rendered DOCX pages were visually inspected; their text is
+extractable and stays within A4 bounds. Word was used only for local QA because
+LibreOffice is unavailable here; neither is required by the bot's export engine.
 
 **Create RU version / Create EN version** makes an independent copy of the current
 draft with its own document language, template, edits and active-CV link. Headings
