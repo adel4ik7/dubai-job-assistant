@@ -713,3 +713,78 @@ restart and check persistence; cancel then confirm `/delete_my_data`; check that
 second tester's records remain. Keep API features disabled.
 Repeat the main flows in both languages; change language from Profile and `/language`,
 restart to check persistence, and verify older application records remain searchable.
+
+
+## First users, onboarding and local product analytics
+
+New users see a short RU/EN welcome on their first `/start`. Optional setup covers
+language, roles, location, UAE-only, minimum AED salary, upload/create/skip CV and
+Job Alerts. Each step supports skipping/back; Continue later persists the step in
+SQLite. Resume from Settings. Existing accounts are not enrolled retroactively.
+CV creation/upload uses the existing flow; return through Resume setup to finish
+the alert choice. Alerts stay off until explicitly enabled and retain the existing
+new-vacancies-only cutoff, deduplication and rate limiting.
+
+The home screen has seven sections: Vacancies, Job Alerts, My CV, Applications,
+Profile, Statistics and Settings. CV creation/analysis lives under My CV; Today
+under Applications; Help, Language, Feedback and data controls under Settings.
+Existing commands and saved user data remain supported.
+
+### Metrics and definitions
+
+`Settings -> Admin stats` or `/admin_stats` requires `ADMIN_TELEGRAM_ID` from `.env`.
+Local SQLite analytics records successful actions using technical user/entity IDs;
+metadata allows only an export/upload format enum. Search text, CV content,
+contacts, filenames, email bodies and authentication data are not event metadata.
+Activity is recorded from private user messages/button presses, never from a
+background notification. No external analytics dependency is used.
+
+Available statistics:
+- Total/new users (24h/7d), active users (24h/7d), active today in UTC, and users
+  active on two or more distinct UTC days. A return event is recorded once per
+  subsequent active day, not for every click or notification.
+- Searches, vacancy views, CV drafts created, exports delivered, applications
+  created, alerts enabled/delivered and share texts prepared. A share count cannot
+  prove that the user actually forwarded the message to a friend.
+- Funnel coverage: started -> onboarding completed -> CV available -> vacancy
+  viewed -> saved or matched -> application created. Each stage intersects the
+  preceding user cohort; percentages use started users as denominator. This is
+  cohort coverage, not a strict timestamp-ordered attribution funnel. Skipping
+  setup completely counts as completing its optional flow. Profile completion
+  means full name and desired role are present.
+- Per-source processed posts, detected/probable vacancies, detection rate,
+  duplicates, successful/failed OCR, views, saves and applications. Application
+  attribution uses the linked vacancy/source URL while that application exists.
+
+Product usage starts at this migration; historical events are not invented or
+backfilled. Current user totals and collector source counts use existing records.
+The additive migration preserves profiles, CVs, applications and collector data.
+
+### Feedback and vacancy review
+
+Settings -> Feedback accepts a category and a private message (1–2000 characters,
+maximum five submissions per user per 24h). Feedback text is visible only to the
+configured admin. The bot worker sends that admin a technical notice containing
+feedback ID/category, without forwarding private feedback text. Notices are
+limited to one per minute and share the existing Telegram rate-limit gate. A
+Telegram FloodWait is respected; uncertain delivery outcomes are not retried
+blindly. The admin must have opened the bot for Telegram to permit these notices;
+feedback remains available in Admin stats even if notification delivery fails or
+no admin is configured. Admin can mark feedback resolved.
+
+Vacancy cards have Report with six reasons. A user has one report per canonical
+vacancy; three independent reports flag review, without automatic deletion.
+Admin can inspect reports/content, hide or restore a vacancy, inspect source
+quality and disable a source. Hidden vacancies and equivalent reposts are
+excluded from browsing, saved lists, fresh matching, Apply Pack creation and new
+alert delivery. Already sent Telegram messages cannot be retracted by hiding.
+Restart both local processes after updating so they load the moderation checks.
+
+`/my_data` explains stored data categories. Confirmed `/delete_my_data` also
+removes this user's product events, activity days, onboarding, feedback and reports
+in addition to existing private records/files. It does not delete public source
+posts or copies already delivered in Telegram.
+
+Recommended acceptance check: invite 3–5 consenting testers, exercise optional
+RU/EN setup -> CV -> matching -> Apply Pack, then review feedback/source quality
+and seven-day activity. No payments or automatic employer messages are included.

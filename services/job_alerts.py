@@ -87,6 +87,8 @@ def enqueue_new(conn, vacancy_id, now=None):
     """Called in the vacancy insertion transaction; retries/updates never call it."""
     now = time.time() if now is None else now
     vacancy = dict(conn.execute('SELECT * FROM vacancies WHERE id=?', (vacancy_id,)).fetchone())
+    if not conn.execute('SELECT 1 FROM visible_vacancies WHERE id=?',(vacancy_id,)).fetchone():
+        return
     if vacancy['duplicate_of'] or vacancy['detection_status'] not in {'vacancy', 'probably_vacancy'}:
         return
     source = conn.execute('SELECT enabled FROM vacancy_sources WHERE id=?', (vacancy['source_id'],)).fetchone()
@@ -160,7 +162,7 @@ class JobAlerts:
             for candidate in rows:
                 delivery = dict(candidate)
                 pref = dict(conn.execute('SELECT * FROM alert_preferences WHERE telegram_id=?', (delivery['telegram_id'],)).fetchone())
-                row = conn.execute('SELECT v.* FROM vacancies v JOIN vacancy_sources s ON s.id=v.source_id WHERE v.id=? AND s.enabled=1', (delivery['vacancy_id'],)).fetchone()
+                row = conn.execute('SELECT v.* FROM visible_vacancies v JOIN vacancy_sources s ON s.id=v.source_id WHERE v.id=? AND s.enabled=1', (delivery['vacancy_id'],)).fetchone()
                 vacancy = dict(row) if row else None
                 if not vacancy or vacancy['duplicate_of'] or vacancy['detection_status'] not in {'vacancy', 'probably_vacancy'} or not fresh(vacancy, pref, now) or not matching_reasons(pref, vacancy):
                     conn.execute("UPDATE alert_deliveries SET state='cancelled' WHERE id=?", (delivery['id'],))

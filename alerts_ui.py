@@ -3,6 +3,7 @@ import json
 import asyncio
 import secrets
 
+from services.growth import Growth
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler
 from locales import translator
@@ -113,6 +114,10 @@ class AlertsUI:
         if not 0 <= index < len(rows):
             raise ValueError('invalid_page')
         vacancy = rows[index]
+        if not self.vacancies.get_visible(vacancy['id']):
+            await self.product.reply(update,tr('v_stale'))
+            return ConversationHandler.END
+        Growth(self.product.db).track(update.effective_user.id,'vacancy_viewed','vacancy',vacancy['id'])
         lines = [tr('mj_heading', count=len(rows)), tr('mj_window', days=selection['days'])]
         for field in ('role', 'company', 'location'):
             if vacancy[field]:
@@ -132,6 +137,7 @@ class AlertsUI:
         buttons += [[InlineKeyboardButton(tr('mj_analyse'), callback_data=f'v:analyse:{vid}')],
                     [InlineKeyboardButton(tr('ap_apply'), callback_data=f'ap:vacancy:{vid}')],
                     [InlineKeyboardButton(tr('share_button'), callback_data=f'v:share:{vid}')],
+                    [InlineKeyboardButton(tr('g_report'), callback_data=f'g:report:{vid}')],
                     [InlineKeyboardButton(tr('mj_save'), callback_data=f'al:save:{selection["token"]}:{index}'),
                      InlineKeyboardButton(tr('mj_apply'), callback_data=f'v:convert:{vid}')]]
         controls = []

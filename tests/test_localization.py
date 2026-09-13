@@ -233,7 +233,10 @@ class LocalizedHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('данные и файлы резюме удалены', self.reply())
         self.assertFalse(bot.db.language_selected(1))
         await bot.start(self.update, self.context)
-        self.assertEqual(self.labels(), ['English 🇬🇧', 'Русский 🇷🇺'])
+        self.assertIn(text('en','g_begin'), self.labels())
+        await self.click('g:resume')
+        self.assertIn('English 🇬🇧', self.labels())
+        self.assertIn('Русский 🇷🇺', self.labels())
         bot.db.set_language(1, 'ru')
         self.context.error = RuntimeError('sensitive')
         from telegram import Update

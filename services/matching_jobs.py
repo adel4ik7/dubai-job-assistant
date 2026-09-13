@@ -21,7 +21,7 @@ def matching_jobs(db, preferences, cv_text=None, now=None):
         conn.create_function('alert_location', 4, location_matcher(preferences['location'], preferences['uae_only']))
         rows = [dict(row) for row in conn.execute('''SELECT v.*,s.title AS source_title,
             (julianday('1970-01-01')+?/86400-julianday(v.published_at)) AS age_days
-            FROM vacancies v JOIN vacancy_sources s ON s.id=v.source_id
+            FROM visible_vacancies v JOIN vacancy_sources s ON s.id=v.source_id
             WHERE v.published_at>=? AND age_days BETWEEN 0 AND 14
             AND v.detection_status IN ('vacancy','probably_vacancy') AND v.duplicate_of IS NULL
             AND (s.enabled=1 OR EXISTS(SELECT 1 FROM vacancies d JOIN vacancy_sources ds

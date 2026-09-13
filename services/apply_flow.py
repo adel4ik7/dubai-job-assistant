@@ -18,11 +18,11 @@ class ApplyFlow:
 
     def source(self, user_id, kind, origin_id):
         if kind == 'vacancy':
-            row = self.vacancies.get(origin_id)
+            row = self.vacancies.get_visible(origin_id)
             if not row or row['detection_status'] not in {'vacancy', 'probably_vacancy'}:
                 raise ValueError('ap_missing')
             if row['duplicate_of']:
-                row = self.vacancies.get(row['duplicate_of'])
+                row = self.vacancies.get_visible(row['duplicate_of'])
             email = row.get('email')
         elif kind == 'application':
             row = self.db.get_application(user_id, origin_id)

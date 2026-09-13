@@ -6,6 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler
 from product_ui import keyboard
 from services.apply_flow import ApplyFlow
+from services.growth import Growth
 
 WAIT_APPLY = 41
 END = ConversationHandler.END
@@ -63,6 +64,7 @@ class ApplyUI:
         try:
             if action in {'vacancy', 'application'}:
                 context.user_data['apply_draft'] = self.flow.prepare(uid, action, int(parts[2]), self.product.language(update))
+                Growth(self.product.db).track(uid,'apply_pack_opened',action,int(parts[2]))
                 return await self.show(update, context)
             if not context.user_data.get('apply_draft') or parts[2] != context.user_data.get('apply_token'):
                 raise ValueError('ap_missing')

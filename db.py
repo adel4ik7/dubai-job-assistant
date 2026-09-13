@@ -136,6 +136,8 @@ class Database:
             conn.execute("""INSERT OR IGNORE INTO active_resumes(telegram_id,resume_id)
                             SELECT telegram_id, MAX(id) FROM resumes GROUP BY telegram_id""")
             initialize_tracker(conn)
+            from services.growth import initialize
+            initialize(conn)
 
     def upsert_user(self, telegram_id: int, username: str | None, first_name: str | None) -> None:
         with self._connect() as conn:

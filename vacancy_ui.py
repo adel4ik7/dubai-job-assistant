@@ -5,6 +5,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler
 
 from services.matcher import analyse_match
+from services.growth import Growth
 from services.vacancy_share import share_vacancy
 from services.product import APP_LABELS
 from vacancy_store import VacancyStore, salary_label, application_defaults
@@ -55,7 +56,7 @@ class VacancyUI:
         if mode == 'best' or mode == 'ranked':
             mode = 'ranked'
             ranked = context.user_data.get('vacancy_ranked', [])
-            row = self.store.get(ranked[offset][0]) if offset < len(ranked) else None
+            row = self.store.get_visible(ranked[offset][0]) if offset < len(ranked) else None
             score = ranked[offset][1] if row else None
             has_next = offset + 1 < len(ranked)
         else:
@@ -73,6 +74,10 @@ class VacancyUI:
 
     async def card(self, update, context, vacancy, nonce=None, score=None):
         tr = self.product.translator(update)
+        if not self.store.get_visible(vacancy['id']):
+            await self.product.reply(update,tr('v_stale'))
+            return
+        Growth(self.db).track(update.effective_user.id,'vacancy_viewed','vacancy',vacancy['id'])
         lines = [tr('v_card', id=vacancy['id'])]
         navigation = context.user_data.get('vacancy_navigation', {})
         page = context.user_data.get('vacancy_page')
@@ -100,7 +105,8 @@ class VacancyUI:
                 [InlineKeyboardButton(tr('v_remove' if saved else 'v_save'), callback_data=f"v:{'remove' if saved else 'save'}:{vacancy['id']}")],
                 [InlineKeyboardButton(tr('v_convert'), callback_data=f"v:convert:{vacancy['id']}")],
                 [InlineKeyboardButton(tr('ap_apply'), callback_data=f"ap:vacancy:{vacancy['id']}")],
-                [InlineKeyboardButton(tr('share_button'), callback_data=f"v:share:{vacancy['id']}")]]
+                [InlineKeyboardButton(tr('share_button'), callback_data=f"v:share:{vacancy['id']}")],
+                [InlineKeyboardButton(tr('g_report'), callback_data=f"g:report:{vacancy['id']}")]]
         if vacancy['source_url']:
             rows.insert(0, [InlineKeyboardButton(tr('v_open'), url=vacancy['source_url'])])
         if nonce:
@@ -133,6 +139,8 @@ class VacancyUI:
         except ValueError:
             await self.product.reply(update, tr('v_invalid_filter'))
             return WAIT_VACANCY_INPUT
+        if field == 'search':
+            Growth(self.db).track(update.effective_user.id,'vacancy_searched')
         selection = context.user_data.setdefault('vacancy_filters', {})
         if value == '-':
             selection.pop(field, None)
@@ -195,7 +203,7 @@ class VacancyUI:
                 context.user_data.setdefault('vacancy_filters', {})['source_id'] = int(parts[2])
                 await self.listing(update, context)
             elif action in {'open', 'analyse', 'save', 'remove', 'convert', 'share'}:
-                vacancy = self.store.get(int(parts[2]))
+                vacancy = self.store.get_visible(int(parts[2]))
                 if not vacancy or vacancy['detection_status'] not in {'vacancy', 'probably_vacancy'}:
                     raise ValueError
                 if action == 'share':
@@ -206,6 +214,7 @@ class VacancyUI:
                     text, url = share_vacancy(vacancy, tr, username)
                     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(tr('share_friend'), url=url)]]) if url else None
                     await self.product.reply(update, text, keyboard)
+                    Growth(self.db).track(update.effective_user.id,'vacancy_shared','vacancy',vacancy['id'])
                 elif action == 'open':
                     context.user_data.pop('vacancy_page', None)
                     context.user_data.pop('vacancy_navigation', None)
@@ -213,7 +222,7 @@ class VacancyUI:
                 elif action == 'analyse':
                     cv = self.db.active_resume(update.effective_user.id)
                     if cv:
-                        await self.product.report(update, context, vacancy['combined_text'][:12000], cv)
+                        await self.product.report(update, context, vacancy['combined_text'][:12000], cv, vacancy['id'])
                     else:
                         await self.product.reply(update, tr('upload_a_cv_first'))
                 elif action == 'convert':

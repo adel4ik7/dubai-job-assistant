@@ -35,7 +35,9 @@ class CVBuilderUITests(unittest.IsolatedAsyncioTestCase):
         for language in ('ru', 'en'):
             bot.db.set_language(1, language)
             labels = [b.text for row in bot.make_main_menu(language).inline_keyboard for b in row]
-            self.assertIn(text(language, 'cb_menu'), labels)
+            self.assertIn(text(language, 'g_my_cv'), labels)
+            await self.click('g:cvs')
+            self.assertIn(text(language, 'cb_menu'), [b.text for row in self.message.reply_text.call_args.kwargs['reply_markup'].inline_keyboard for b in row])
             await self.click('cb:home')
             self.assertIn(text(language, 'cb_intro'), self.message.reply_text.call_args.args[0])
         self.assertEqual(await self.click('cb:new'), WAIT_CV_BUILDER)

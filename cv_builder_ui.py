@@ -8,6 +8,7 @@ from telegram.ext import ConversationHandler
 from locales import translator
 from product_ui import keyboard
 from services.cv_builder import CVBuilder, SECTIONS, SECTION_FIELDS, validate_value
+from services.growth import Growth
 from services.cv_export import plain_text
 from services.cv_export import TEMPLATE_IDS, TEMPLATES, template_style
 
@@ -262,6 +263,7 @@ class CVBuilderUI:
             if action in {'pdf', 'docx'}:
                 attachment = await asyncio.to_thread(self.builder.attachment, uid, draft_id, action, self.product.language(update))
                 await update.effective_message.reply_document(document=io.BytesIO(attachment.content), filename=attachment.filename)
+                Growth(self.product.db).track(uid,'cv_generated','cv',draft_id,{'format':action})
                 return await self.view(update, context, draft_id)
             if action == 'active':
                 await asyncio.to_thread(self.builder.activate, uid, draft_id, self.product.language(update))

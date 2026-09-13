@@ -1,4 +1,5 @@
 """v0.3 private-chat product screens. No network services beyond Telegram replies."""
+from services.growth import Growth
 from locales import translator, field_labels, status_label, value_label
 import secrets
 import time
@@ -169,12 +170,13 @@ class ProductUI:
         await self.applications(update, context)
         return END
 
-    async def report(self, update, context, vacancy, resume):
+    async def report(self, update, context, vacancy, resume, vacancy_id=None):
         tr = self.translator(update)
         token = secrets.token_hex(4)
         context.user_data['analysis'] = {'vacancy': vacancy, 'resume_id': resume['id'], 'token': token}
         markup = keyboard([[(tr('save_vacancy_application'), f'p:save:{token}')], [(tr('compare_with_another_cv'), f'p:other:{token}')], [(tr('most_important_gaps'), f'p:gaps:{token}'), (tr('profile_gaps'), f'p:profilegaps:{token}')], [(tr('main_menu'), 'p:home')]])
         await self.reply(update, tr('cv_v0_v1', v0=resume['id'], v1=resume['filename']) + format_analysis(analyse_match(resume['extracted_text'], vacancy, language=self.language(update)), language=self.language(update)), markup)
+        Growth(self.db).track(update.effective_user.id,'vacancy_matched','vacancy' if vacancy_id else None,vacancy_id)
 
     async def delete_my_data(self, update, context):
         tr = self.translator(update)

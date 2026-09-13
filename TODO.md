@@ -1,5 +1,36 @@
 # Dubai Job Assistant — TODO
 
+## First users / analytics / onboarding — 2026-09-13
+- Added optional persisted new-user-only RU/EN onboarding, including existing
+  alert preferences and upload/create CV handoff. Existing users are not forced
+  into setup. Compact seven-section home preserves old features in submenus.
+- Added local closed-metadata events, daily private-user activity, admin-only
+  usage/coverage funnel/retention and source quality. No CV/search/contact content
+  is retained in events. Durable DB transitions record successful operations.
+- Feedback is private, category-based and rate-limited; admin receives technical
+  ID/category notices through the existing worker and rate gate. Uncertain sends
+  are not retried automatically. Added feedback resolution and source disabling.
+- Independent vacancy reports flag review at three users; admin hide/restore
+  filters public lists, saved results, matching, reposts, Apply Pack and pending
+  alerts. Already sent Telegram messages are not removed.
+- Added /my_data and deletion of analytics, activity, onboarding, feedback and
+  reports in the existing confirmed account-deletion transaction.
+- Validation: all 265 tests passed including real local OCR; compileall and pip
+  check passed. Git payload audit found zero private/runtime paths or configured
+  secrets, including inside DOCX XML. Commit title: Add first-user onboarding,
+  private product analytics and admin review.
+- Metrics begin with this release; no historical usage is fabricated. Funnel
+  reports intersected cohort coverage rather than strict chronological conversion.
+  Source application attribution currently follows existing application records.
+- Exact next recommended step: invite 3–5 consenting first testers to complete
+  optional RU/EN onboarding, create/upload CV, view matching jobs and prepare an
+  Apply Pack. In Telegram open Settings -> Admin stats -> Feedback / Source quality;
+  review returning/active users after seven days. Do not start payments or email
+  sending. For regression verification run `.venv\Scripts\python.exe -m unittest
+  discover -s tests -p test_growth.py -q`; entry points are growth_ui.py:GrowthUI
+  and services/growth.py:Growth. No further module is part of this milestone.
+
+
 ## CV visual redesign — 2026-09-13
 - Rendering-only redesign of Modern Blue, Professional and Classic ATS from the
   three supplied visual references, without their branding or people/demo text.

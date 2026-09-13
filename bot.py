@@ -15,6 +15,8 @@ from apply_ui import ApplyUI, WAIT_APPLY
 from alerts_ui import AlertsUI, WAIT_ALERTS
 from services.alert_sender import start_sender, stop_sender
 from tracker_ui import TrackerUI, WAIT_TRACKER
+from growth_ui import GrowthUI, WAIT_GROWTH
+from services.growth import Growth
 from services.ai import AIError, AIService, OpenAIProvider, TASKS, message_chunks
 from services.matcher import analyse_match, format_analysis
 from services.resume_parser import ResumeParseError, extract_text
@@ -32,14 +34,10 @@ WAIT_APPLICATION = 2
 WAIT_AI_VACANCY = 3
 def make_main_menu(language='en'):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(locale_text(language, 'menu_profile'), callback_data='p:profile'), InlineKeyboardButton(locale_text(language, 'menu_cvs'), callback_data='p:cvs:0')],
-        [InlineKeyboardButton(locale_text(language, 'cb_menu'), callback_data='cb:home')],
-        [InlineKeyboardButton(locale_text(language, 'menu_analyse'), callback_data='analyse_vacancy')],
-        [InlineKeyboardButton(locale_text(language, 'v_menu'), callback_data='v:home')],
-        [InlineKeyboardButton(locale_text(language, 'al_menu'), callback_data='al:home')],
-        [InlineKeyboardButton(locale_text(language, 'at_today'), callback_data='at:today:0')],
-        [InlineKeyboardButton(locale_text(language, 'menu_applications'), callback_data='p:apps:0'), InlineKeyboardButton(locale_text(language, 'menu_dashboard'), callback_data='p:dashboard')],
-        [InlineKeyboardButton(locale_text(language, 'menu_help'), callback_data='help'), InlineKeyboardButton(locale_text(language, 'language_button'), callback_data='p:language')]])
+        [InlineKeyboardButton(locale_text(language, key), callback_data=data)]
+        for key,data in [('v_menu','v:home'),('al_menu','al:home'),('g_my_cv','g:cvs'),
+                         ('g_applications','g:applications'),('menu_profile','p:profile'),
+                         ('g_statistics','p:dashboard'),('g_settings','g:settings')]])
 
 MAIN_MENU = make_main_menu()
 
@@ -49,12 +47,18 @@ def user_id(update: Update) -> int:
 async def ensure_user(update: Update) -> None:
     u = update.effective_user
     db.upsert_user(u.id, u.username, u.first_name)
+    Growth(db).touch(u.id)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tr = product.translator(update)
     reset_pending(context)
     context.user_data.pop('ai_action', None)
+    with db._connect() as conn:
+        new_user = not conn.execute('SELECT 1 FROM users WHERE telegram_id=?',(user_id(update),)).fetchone()
     await ensure_user(update)
+    Growth(db).track(user_id(update),'user_started',key='once')
+    if new_user:
+        return await growth_ui.welcome(update,context)
     if not db.language_selected(user_id(update)):
         return await product.language_menu(update, context)
     text = tr('dubai_job_assistant_upload_your_cv_compare_it_with_a_vacancy')
@@ -82,6 +86,10 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await query.message.reply_text(tr('please_use_a_private_chat_with_the_bot'))
         return ConversationHandler.END
     await ensure_user(update)
+    if query.data.startswith('g:'):
+        reset_pending(context)
+        return await growth_ui.buttons(update,context)
+    context.user_data.pop('growth_input',None)
     if query.data.startswith('at:') or query.data.startswith('p:app:'):
         for key in ('form','apply_draft','apply_token','apply_field','builder_form','ai_action','vacancy_input','alert_field'):
             context.user_data.pop(key,None)
@@ -178,7 +186,8 @@ async def receive_cv(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         log.error('CV parse failed; details omitted for privacy')
         await update.message.reply_text(tr('could_not_parse_this_file'))
         return
-    db.add_resume(user_id(update), original_name, str(path), text)
+    rid = db.add_resume(user_id(update), original_name, str(path), text)
+    Growth(db).track(user_id(update),'cv_uploaded','cv',rid,{'format':suffix[1:]})
     await update.message.reply_text(tr('cv_saved_v0_extracted_v1_characters', v0=original_name, v1=len(text)), reply_markup=product.menu(update))
 
 async def vacancy_received(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -228,6 +237,11 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tr = product.translator(update)
+    if context.user_data.pop('growth_input',None):
+        row=growth_ui.store.onboarding(user_id(update))
+        if row and row['state']=='active': growth_ui.store.step(user_id(update),row['step'],'paused')
+        await product.reply(update,tr('cancelled'),product.menu(update))
+        return ConversationHandler.END
     tracker_form = context.user_data.pop('tracker_form',None)
     if tracker_form:
         await product.reply(update,tr('cancelled'))
@@ -283,7 +297,7 @@ async def ai_vacancy_received(update: Update, context: ContextTypes.DEFAULT_TYPE
     return await run_ai(update, context, action, vacancy)
 
 def reset_pending(context) -> None:
-    for key in ('tracker_form', 'tracker_action', 'tracker_delete', 'alert_field', 'form', 'delete_confirmation', 'cv_delete', 'ai_action', 'vacancy_input', 'builder_form', 'builder_delete', 'apply_draft', 'apply_token', 'apply_field'):
+    for key in ('growth_input', 'tracker_form', 'tracker_action', 'tracker_delete', 'alert_field', 'form', 'delete_confirmation', 'cv_delete', 'ai_action', 'vacancy_input', 'builder_form', 'builder_delete', 'apply_draft', 'apply_token', 'apply_field'):
         context.user_data.pop(key, None)
 
 def cleanup_failed_upload(path: Path) -> None:
@@ -298,7 +312,7 @@ async def cv_received(update, context):
     return ConversationHandler.END
 
 def build_application(config: Settings | None=None) -> Application:
-    global settings, db, ai, product, vacancies, builder_ui, apply_ui, alerts_ui, tracker_ui
+    global settings, db, ai, product, vacancies, builder_ui, apply_ui, alerts_ui, tracker_ui, growth_ui
     settings = config or load_settings()
     db = Database(settings.database_path)
     ai = AIService(None, db, settings.ai_daily_limit)
@@ -308,12 +322,16 @@ def build_application(config: Settings | None=None) -> Application:
     vacancies = VacancyUI(product, settings.vacancy_match_window, settings.admin_telegram_id)
     alerts_ui = AlertsUI(product)
     tracker_ui = TrackerUI(product)
+    growth_ui = GrowthUI(product, settings.admin_telegram_id, builder_ui)
     app = Application.builder().token(settings.telegram_bot_token).concurrent_updates(False).post_init(start_sender).post_stop(stop_sender).build()
     app.bot_data['job_alerts'] = alerts_ui.store
+    app.bot_data['growth'] = growth_ui.store
     conversation = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(buttons),
             CommandHandler('start', start, filters=filters.ChatType.PRIVATE),
+            CommandHandler('my_data', growth_ui.data, filters=filters.ChatType.PRIVATE),
+            CommandHandler('admin_stats', growth_ui.admin_stats, filters=filters.ChatType.PRIVATE),
             CommandHandler('menu', menu, filters=filters.ChatType.PRIVATE),
             CommandHandler('cancel', cancel, filters=filters.ChatType.PRIVATE),
             CommandHandler('language', product.language_menu, filters=filters.ChatType.PRIVATE),
@@ -321,6 +339,7 @@ def build_application(config: Settings | None=None) -> Application:
             MessageHandler(filters.Document.ALL & filters.ChatType.PRIVATE, cv_received),
         ],
         states={
+            WAIT_GROWTH: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, growth_ui.receive)],
             WAIT_TRACKER: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, tracker_ui.receive)],
             WAIT_ALERTS: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, alerts_ui.receive)],
             WAIT_APPLY: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, apply_ui.receive)],
@@ -339,8 +358,15 @@ def build_application(config: Settings | None=None) -> Application:
     app.add_handler(CommandHandler('status', status_command, filters=filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler('collector_stats', vacancies.admin_stats, filters=filters.ChatType.PRIVATE))
     app.add_handler(conversation)
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE, record_activity), group=-1)
+    app.add_handler(CallbackQueryHandler(record_activity), group=-1)
     app.add_error_handler(error_handler)
     return app
+
+async def record_activity(update, context):
+    if getattr(getattr(update,'effective_chat',None),'type',None)=='private' and update.effective_user:
+        Growth(db).touch(update.effective_user.id)
+
 
 def main() -> None:
     try:

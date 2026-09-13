@@ -183,6 +183,11 @@ class VacancyStore:
                                (vacancy_id,)).fetchone()
             return dict(row) if row else None
 
+    def get_visible(self, vacancy_id):
+        with self.db._connect() as conn:
+            row=conn.execute('SELECT v.*,s.title source_title FROM visible_vacancies v JOIN vacancy_sources s ON s.id=v.source_id WHERE v.id=?',(vacancy_id,)).fetchone()
+            return dict(row) if row else None
+
     def list(self, *, limit=100, offset=0, search='', location='', salary_min=None,
              source_id=None, days=None, saved_user=None, uae_only=False, preferred_location=''):
         clauses = ["v.detection_status IN ('vacancy','probably_vacancy')", 'v.duplicate_of IS NULL']
@@ -230,12 +235,12 @@ class VacancyStore:
             elif prefer_uae:
                 conn.create_function('location_preference', 4, location_matcher(uae_only=True), deterministic=True)
             return [dict(r) for r in conn.execute(
-                'SELECT ' + select + ' FROM vacancies v JOIN vacancy_sources s ON s.id=v.source_id WHERE ' +
+                'SELECT ' + select + ' FROM visible_vacancies v JOIN vacancy_sources s ON s.id=v.source_id WHERE ' +
                 ' AND '.join(clauses) + ' ORDER BY ' + order + ' LIMIT ? OFFSET ?',
                 (*values, min(100, max(1, limit)), max(0, offset)))]
 
     def save(self, user_id, vacancy_id):
-        row = self.get(vacancy_id)
+        row = self.get_visible(vacancy_id)
         if not row or row['detection_status'] not in {'vacancy', 'probably_vacancy'}:
             return False
         with self.db._connect() as conn:
@@ -269,6 +274,7 @@ class VacancyStore:
                 COALESCE(SUM(v.detection_status='pending'),0) AS pending,
                 COALESCE(SUM(v.ocr_status!='not_needed'),0) AS ocr_messages,
                 COALESCE(SUM(v.ocr_status='failed'),0) AS ocr_failures,
+                COALESCE(SUM(v.ocr_status='processed'),0) AS ocr_success,
                 COALESCE(SUM(v.ocr_status='unavailable'),0) AS ocr_unavailable,
                 COALESCE(SUM(v.duplicate_of IS NOT NULL),0) AS duplicates,
                 COALESCE(AVG(v.detection_score),0) AS avg_detection_score
