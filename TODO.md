@@ -1,5 +1,21 @@
 # Dubai Job Assistant — TODO
 
+## Repository audit and local runtime checkpoint — 2026-09-13
+- Latest feature is Share Vacancy, committed and pushed as 31aa2aa. Job Alerts,
+  Matching jobs now, Apply Pack and application follow-up/interviews are complete.
+  main matches fetched origin/main; no unfinished code or pending small bugfix.
+- Documentation cleanup only: corrected the stale Share commit/push note below.
+  Older "next" items are historical, not instructions to duplicate finished work.
+- Revalidated all 238 tests including real local EN/RU OCR; compileall and pip check
+  passed using .venv/Scripts/python.exe. Eight configured sources are enabled.
+- Operational handoff: start one bot.py and one collector.py with the existing
+  .venv and Telethon session; check startup/OCR/source progress in ignored
+  data/runtime logs. Do not create duplicate processes or reset the session.
+- Exact next step after startup: in Telegram open Vacancies -> Latest -> Share ->
+  Send to friend, inspect the prepared text and cancel the recipient picker; then
+  verify Next/Previous still work. Repeat in RU and EN. No message must be sent to
+  another person for this acceptance check. No new major module is authorized here.
+
 ## Share Vacancy — 2026-09-13
 - Added localized Share to vacancy and matching-job cards. Pure public-metadata
   formatter omits missing company/location/salary/source, adds a bot deep link only
@@ -12,7 +28,7 @@
   invalid URLs, card integration and next-page navigation.
 - Verification: all 238 tests passed including local OCR; compileall, dependency
   and diff checks passed. Tracked/unignored files contain no secret values or
-  private runtime files. Implementation complete and ready for commit/push main.
+  private runtime files. Implementation committed and pushed to main as 31aa2aa.
 - Stop after this isolated feature; no new major module planned in this request.
 
 ## Application follow-up and interview tracker — 2026-09-13
