@@ -1,5 +1,18 @@
 # Dubai Job Assistant — v0.4
 
+## Share Vacancy / Поделиться вакансией
+
+Use **📤 Share / Поделиться** on a vacancy card (including Matching jobs now).
+The bot prepares a compact, forwardable RU/EN message using only public role,
+company, location, salary and source metadata. Missing values are omitted. A bot
+deep link is included when its initialized username is available; no CV, profile
+or application message is included.
+
+**📤 Send to friend / Переслать другу** opens the standard
+[Telegram sharing window](https://core.telegram.org/widgets/share): the user chooses
+the recipient and sends it manually. Without a source or bot link, the prepared
+message can still be forwarded manually. Sharing preserves search pagination.
+
 ## Personal Job Alerts / Персональные уведомления
 
 **🎯 Matching jobs now / Подходящие вакансии сейчас** shows a retrospective

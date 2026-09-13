@@ -131,6 +131,7 @@ class AlertsUI:
             buttons.append([InlineKeyboardButton(tr('mj_source'), url=vacancy['source_url'])])
         buttons += [[InlineKeyboardButton(tr('mj_analyse'), callback_data=f'v:analyse:{vid}')],
                     [InlineKeyboardButton(tr('ap_apply'), callback_data=f'ap:vacancy:{vid}')],
+                    [InlineKeyboardButton(tr('share_button'), callback_data=f'v:share:{vid}')],
                     [InlineKeyboardButton(tr('mj_save'), callback_data=f'al:save:{selection["token"]}:{index}'),
                      InlineKeyboardButton(tr('mj_apply'), callback_data=f'v:convert:{vid}')]]
         controls = []

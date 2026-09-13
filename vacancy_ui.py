@@ -5,6 +5,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler
 
 from services.matcher import analyse_match
+from services.vacancy_share import share_vacancy
 from services.product import APP_LABELS
 from vacancy_store import VacancyStore, salary_label, application_defaults
 
@@ -98,7 +99,8 @@ class VacancyUI:
         rows = [[InlineKeyboardButton(tr('v_analyse'), callback_data=f"v:analyse:{vacancy['id']}")],
                 [InlineKeyboardButton(tr('v_remove' if saved else 'v_save'), callback_data=f"v:{'remove' if saved else 'save'}:{vacancy['id']}")],
                 [InlineKeyboardButton(tr('v_convert'), callback_data=f"v:convert:{vacancy['id']}")],
-                [InlineKeyboardButton(tr('ap_apply'), callback_data=f"ap:vacancy:{vacancy['id']}")]]
+                [InlineKeyboardButton(tr('ap_apply'), callback_data=f"ap:vacancy:{vacancy['id']}")],
+                [InlineKeyboardButton(tr('share_button'), callback_data=f"v:share:{vacancy['id']}")]]
         if vacancy['source_url']:
             rows.insert(0, [InlineKeyboardButton(tr('v_open'), url=vacancy['source_url'])])
         if nonce:
@@ -192,11 +194,19 @@ class VacancyUI:
             elif action == 'source':
                 context.user_data.setdefault('vacancy_filters', {})['source_id'] = int(parts[2])
                 await self.listing(update, context)
-            elif action in {'open', 'analyse', 'save', 'remove', 'convert'}:
+            elif action in {'open', 'analyse', 'save', 'remove', 'convert', 'share'}:
                 vacancy = self.store.get(int(parts[2]))
                 if not vacancy or vacancy['detection_status'] not in {'vacancy', 'probably_vacancy'}:
                     raise ValueError
-                if action == 'open':
+                if action == 'share':
+                    try:
+                        username = getattr(getattr(context, 'bot', None), 'username', None)
+                    except RuntimeError:  # Bot identity is not initialized yet.
+                        username = None
+                    text, url = share_vacancy(vacancy, tr, username)
+                    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(tr('share_friend'), url=url)]]) if url else None
+                    await self.product.reply(update, text, keyboard)
+                elif action == 'open':
                     context.user_data.pop('vacancy_page', None)
                     context.user_data.pop('vacancy_navigation', None)
                     await self.card(update, context, vacancy)

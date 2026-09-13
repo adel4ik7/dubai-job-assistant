@@ -1,5 +1,20 @@
 # Dubai Job Assistant — TODO
 
+## Share Vacancy — 2026-09-13
+- Added localized Share to vacancy and matching-job cards. Pure public-metadata
+  formatter omits missing company/location/salary/source, adds a bot deep link only
+  when its username is available, and never reads CV/profile/application content.
+- Sends a compact forwardable message. Standard Telegram share URL opens a manual
+  recipient picker without repeating the source URL; no automatic friend messages.
+  Text-only fallback when neither source nor bot URL is available.
+- Existing search/matching pagination preserved. No schema or business-flow changes.
+- Tests cover RU/EN, missing fields/links, deep link, private-field exclusion,
+  invalid URLs, card integration and next-page navigation.
+- Verification: all 238 tests passed including local OCR; compileall, dependency
+  and diff checks passed. Tracked/unignored files contain no secret values or
+  private runtime files. Implementation complete and ready for commit/push main.
+- Stop after this isolated feature; no new major module planned in this request.
+
 ## Application follow-up and interview tracker — 2026-09-13
 - Added owner-scoped details, selected CV download, status picker, timeline, note,
   interview wizard, follow-up presets/custom date/cancel/reply, confirmed delete.

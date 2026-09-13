@@ -42,6 +42,31 @@ class VacancyUITests(unittest.IsolatedAsyncioTestCase):
     def labels(self):
         return [b.text for row in self.message.reply_text.call_args.kwargs['reply_markup'].inline_keyboard for b in row]
 
+    async def test_share_card_ru_en_preserves_pagination(self):
+        self.add(1)
+        self.add(2, text='Role: Cook\nHiring in Dubai. Salary 6000 AED. Send CV jobs@example.com')
+        self.context.bot = SimpleNamespace(username='DubaiJobsBot')
+        for language in ('ru', 'en'):
+            bot.db.set_language(1, language)
+            await self.click('v:latest')
+            self.assertIn(text(language, 'share_button'), self.labels())
+            self.assertIn(text(language, 'ap_apply'), self.labels())
+            page = self.context.user_data['vacancy_page']
+            vid = self.context.user_data['vacancy_navigation']['id']
+            await self.click(f'v:share:{vid}')
+            self.assertIn(text(language, 'share_source'), self.reply())
+            self.assertIn('https://t.me/DubaiJobsBot?start=vacancy_share', self.reply())
+            self.assertIn(text(language, 'share_friend'), self.labels())
+            self.assertEqual(self.context.user_data['vacancy_page'], page)
+            await self.click('v:next:' + page[0])
+            self.assertNotEqual(self.context.user_data['vacancy_navigation']['id'], vid)
+
+    async def test_share_without_links_is_forwardable_message(self):
+        vid = self.store.insert(self.source, 1, role='Cook', detection_status='vacancy')[0]
+        await self.click(f'v:share:{vid}')
+        self.assertEqual(self.reply(), '🔥 Cook')
+        self.assertIsNone(self.message.reply_text.call_args.kwargs.get('reply_markup'))
+
     async def test_search_relevance_navigation_over_thirty_cards(self):
         for index in range(1, 36):
             self.store.insert(self.source, index, role='Cook', detection_status='vacancy', published_at=f'2026-08-{(index % 28)+1:02d}')
