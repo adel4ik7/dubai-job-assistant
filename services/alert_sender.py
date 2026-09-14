@@ -9,6 +9,7 @@ from services.job_alerts import JobAlerts
 from alerts_ui import notification
 from services.application_reminders import deliver_reminder
 from services.feedback_sender import deliver_feedback
+from services.daily_report import deliver_daily_report
 
 log = logging.getLogger(__name__)
 
@@ -49,7 +50,9 @@ async def start_sender(application):
         while True:
             growth=application.bot_data.get('growth')
             jobs=[]
-            if growth:jobs.append(lambda:deliver_feedback(application.bot,growth))
+            if growth:
+                jobs.append(lambda:deliver_daily_report(application.bot,growth))
+                jobs.append(lambda:deliver_feedback(application.bot,growth))
             jobs.extend((lambda:deliver_reminder(application.bot,store.db),lambda:deliver_one(application.bot,store)))
             for job in jobs:
                 try:

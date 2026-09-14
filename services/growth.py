@@ -28,6 +28,16 @@ CREATE TABLE IF NOT EXISTS feedback (
 CREATE TABLE IF NOT EXISTS feedback_gate (id INTEGER PRIMARY KEY CHECK(id=1), next_at REAL NOT NULL DEFAULT 0);
 INSERT OR IGNORE INTO feedback_gate(id) VALUES(1);
 CREATE INDEX IF NOT EXISTS product_activity_last ON product_activity(last_at);
+CREATE TABLE IF NOT EXISTS admin_daily_reports (
+ day TEXT NOT NULL, admin_id INTEGER NOT NULL, part INTEGER NOT NULL, cutoff TEXT NOT NULL,
+ user_ids TEXT NOT NULL DEFAULT '[]', state TEXT NOT NULL DEFAULT 'pending',
+ attempted_at REAL, next_at REAL NOT NULL DEFAULT 0, message_id INTEGER,
+ PRIMARY KEY(day,admin_id,part));
+CREATE TRIGGER IF NOT EXISTS daily_report_delete_user AFTER DELETE ON users BEGIN
+ DELETE FROM admin_daily_reports WHERE admin_id=OLD.telegram_id;
+ UPDATE admin_daily_reports SET user_ids=(SELECT json_group_array(value)
+   FROM json_each(admin_daily_reports.user_ids) WHERE value!=OLD.telegram_id);
+END;
 CREATE INDEX IF NOT EXISTS feedback_pending ON feedback(notification_state,notice_at);
 CREATE TABLE IF NOT EXISTS vacancy_reports (
  user_id INTEGER NOT NULL, vacancy_id INTEGER NOT NULL, reason TEXT NOT NULL,

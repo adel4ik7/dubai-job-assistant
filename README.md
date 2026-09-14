@@ -1,5 +1,28 @@
 # Dubai Job Assistant — v0.4
 
+## Daily admin report at 22:00 Dubai
+
+The existing bot delivery worker sends ADMIN_TELEGRAM_ID a daily RU/EN report
+at 22:00 Dubai (UTC+4), using the admin's saved language. No external scheduler,
+paid service or extra process is required. This is enabled when an admin is configured.
+The summary counts active users (messages/buttons, including admin), registrations
+and recorded product actions. Subsequent parts show up to five users each, with
+@username/ID, event counts and furthest recorded action in the reporting period.
+This is an observed milestone, not proof of completing a sequential funnel.
+Product events are not a count of messages; raw messages, CVs, searches and profile
+contents are never included. Automatic alert delivery is reported separately and
+does not count as a user's visit/action.
+
+The period starts at Dubai midnight. If offline at 22:00, the bot sends on restart
+before local midnight, explicitly showing the actual cutoff; it does not replay
+older days. The laptop must be awake and connected. Participant IDs are snapshotted
+for multipart delivery; names and event details are read from existing tables.
+Each day/admin/part has a persistent delivery state, shares the global send gate
+and obeys RetryAfter. Ambiguous timeouts/crashes are not blindly retried (an
+occasional report part may be missed). Delivery records expire after seven days;
+delete_my_data removes the user's IDs from pending/stored report membership.
+Reports already delivered to Telegram are not recalled by local deletion.
+
 ## Admin user directory
 
 Settings → Admin stats → **👥 Users / Пользователи** is restricted to

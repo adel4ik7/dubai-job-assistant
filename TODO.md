@@ -1,5 +1,21 @@
 # Dubai Job Assistant — TODO
 
+## Daily admin digest — 2026-09-15
+- Added 22:00 Dubai daily admin summary and per-user action/milestone details,
+  RU/EN, @username/ID, five users per part. Reuses growth/activity/product events.
+- Bot sender handles delivery with the shared rate gate; persistent day/admin/part
+  claims prevent restart duplicates. RetryAfter obeyed; uncertain sends not retried.
+- No message/CV/profile content in reports or logs. Stored report membership is
+  IDs only; seven-day retention and user-deletion cleanup included.
+- Period: Dubai midnight to generation, usually 22:00. Same-evening catch-up only;
+  no historic report replay. Active includes buttons and admin, not background sends.
+- Validation: full suite 318 tests, OK (2 skipped), compileall passed. Schedule,
+  restart/idempotency, RetryAfter, privacy/deletion, RU/EN and Telegram size tested
+  with a fake Telegram sender; first real scheduled 22:00 delivery remains to observe.
+- Next step: leave bot running at 22:00 Dubai and confirm the first scheduled report
+  from Telegram. Regression: .venv\Scripts\python.exe -m unittest discover -s tests
+  -p test_daily_report.py -q. Entry: services/daily_report.py:deliver_daily_report.
+
 ## Admin directory display fix — 2026-09-15
 - Telegram usernames now render as clickable @mentions; numeric IDs remain.
 - Fixed a UTF-8/Windows-codepage corrupted missing-value dash in admin_users.clean.
