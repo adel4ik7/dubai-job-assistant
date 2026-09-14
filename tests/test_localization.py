@@ -245,5 +245,5 @@ class LocalizedHandlerTests(unittest.IsolatedAsyncioTestCase):
             'text': '/menu'}}, self.app.bot)
         with patch('telegram.Message.reply_text', new_callable=AsyncMock) as reply:
             await bot.error_handler(update, self.context)
-        self.assertIn('Произошла ошибка', reply.call_args.args[0])
+        self.assertIn('Не удалось выполнить действие', reply.call_args.args[0])
         self.assertNotIn('sensitive', reply.call_args.args[0])

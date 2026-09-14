@@ -570,5 +570,6 @@
   "g_funnel_4": "Сохранили или сравнили",
   "g_funnel_5": "Создали отклик",
   "g_feedback_open": "Открыто",
-  "g_feedback_resolved": "Решено"
+  "g_feedback_resolved": "Решено",
+  "reliability_action_failed": "⚠️ Не удалось выполнить действие.\nПопробуйте ещё раз через несколько секунд."
 }

@@ -1,5 +1,39 @@
 # Dubai Job Assistant — TODO
 
+## Bot reliability / always-on — 2026-09-15
+- Scope: bot lifecycle and operations only. Collector/OCR and product business
+  rules unchanged. Reused the existing kernel-lock utility without modifying it.
+- Audit: PTB 22.8, old bootstrap_retries default 0, "running" printed before init;
+  transient bootstrap timeout can exit main, reproduced in a regression test.
+  Runtime polling already had framework retries. Historic Request failed logs
+  contain no exception type/exit marker, so the exact historic cause is unproven.
+  Two old bot launches were detected during replacement; conflicts were possible.
+- Added cancellable bootstrap retries, PTB-owned steady polling, explicit conflict
+  exit, isolated safe global error handler, request-level health, five-minute
+  heartbeat, atomic bot health and size-limited private-safe logs.
+- Added independent background-job boundaries and bot-only bounded SQLite busy
+  retries/rollback. Existing reminder/outbox idempotency is preserved.
+- Added bot lock, Ctrl+C/SIGTERM/--stop cleanup, bounded watchdog and start_all.ps1
+  with independent bot/collector lock probes and separate watchdog consoles.
+- All 305 tests passed including real local OCR and PTB fake-transport retry tests;
+  compileall, pip check and PowerShell parsing passed. Git audit found no private
+  paths/runtime data or configured secrets, including inside DOCX XML.
+- Live bootstrap, second-instance refusal and --stop -> stopped -> restart verified.
+  start_all.ps1 correctly skipped both already-running locked processes. Final
+  live process produced its next heartbeat after 300 seconds, remained running
+  with zero health errors, and exactly one bot plus one collector were confirmed.
+  User-side live /start/menu confirmation and
+  a real network interruption have not been observed; the corresponding flows
+  and network scenarios passed automated tests. Collector remains untouched.
+- Commit title: Harden bot lifecycle, polling diagnostics and Windows operation.
+- Exact next step after this milestone: run scripts/start_all.ps1 with the laptop
+  awake; confirm /start, vacancy search, Profile, My CV and Job Alerts from the
+  user's Telegram client; inspect runtime/bot_health.json and logs/bot.log after
+  an actual network interruption. No further product feature is part of this task.
+  Regression command: `.venv\Scripts\python.exe -m unittest discover -s tests
+  -p test_bot_reliability.py -q`. Entry: services/bot_runtime.py:serve.
+
+
 ## Collector reliability / always-on — 2026-09-14
 - Only collector lifecycle, isolated OCR worker, Windows launch/watchdog scripts,
   tests and operational documentation changed. Other product flows stay intact.

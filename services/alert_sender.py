@@ -47,17 +47,19 @@ async def start_sender(application):
     store = application.bot_data['job_alerts']
     async def loop():
         while True:
-            try:
-                growth=application.bot_data.get('growth')
-                if growth and await deliver_feedback(application.bot,growth):
-                    await asyncio.sleep(2)
-                    continue
-                if not await deliver_reminder(application.bot,store.db):
-                    await deliver_one(application.bot, store)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                log.warning('Job alert worker paused after a local error.')
+            growth=application.bot_data.get('growth')
+            jobs=[]
+            if growth:jobs.append(lambda:deliver_feedback(application.bot,growth))
+            jobs.extend((lambda:deliver_reminder(application.bot,store.db),lambda:deliver_one(application.bot,store)))
+            for job in jobs:
+                try:
+                    if await job():break
+                except asyncio.CancelledError:raise
+                except Exception as exc:
+                    health=application.bot_data.get('runtime_health')
+                    if health:health.error(exc,'background_job')
+                    else:log.warning('Background job failed; error_type=%s',type(exc).__name__)
+                    # Another job can proceed through the existing shared rate gate.
             await asyncio.sleep(2)
     application.bot_data['alert_task'] = asyncio.create_task(loop())
 

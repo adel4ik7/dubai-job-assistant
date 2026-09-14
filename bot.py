@@ -1,13 +1,18 @@
 from locales import text as locale_text, status_label
 from statuses import normalize_status
 import logging
+import argparse
+import asyncio
 from pathlib import Path
 from uuid import uuid4
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, ConversationHandler, MessageHandler, filters
-from config import Settings, load_settings
-from db import Database, STATUSES
+from telegram.error import RetryAfter
+from datetime import timedelta
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, ConversationHandler, MessageHandler, TypeHandler, filters
+from config import Settings, load_settings, BASE_DIR
+from db import STATUSES
+from services.bot_db import BotDatabase as Database
 from product_ui import ProductUI, WAIT_FORM, WAIT_SEARCH
 from vacancy_ui import VacancyUI, WAIT_VACANCY_INPUT
 from cv_builder_ui import CVBuilderUI, WAIT_CV_BUILDER
@@ -21,7 +26,9 @@ from services.ai import AIError, AIService, OpenAIProvider, TASKS, message_chunk
 from services.matcher import analyse_match, format_analysis
 from services.resume_parser import ResumeParseError, extract_text
 logging.basicConfig(format='%(asctime)s %(levelname)s %(name)s: %(message)s', level=logging.INFO)
-log = logging.getLogger(__name__)
+from services.bot_runtime import (BotHealth,ResilientRequest,InstanceLock,AlreadyRunning,
+    configure_logging,serve,wait_stop)
+log = logging.getLogger('bot.runtime')
 for logger_name in ('httpx', 'httpcore', 'telegram', 'pypdf'):
     logging.getLogger(logger_name).setLevel(logging.CRITICAL)
 settings: Settings
@@ -261,10 +268,28 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    tr = product.translator(update)
-    log.error('Request failed; details omitted for privacy')
-    if isinstance(update, Update) and update.effective_message:
-        await update.effective_message.reply_text(tr('something_went_wrong_open_menu_and_try_again'))
+    error=getattr(context,'error',None) or RuntimeError()
+    application=getattr(context,'application',None)
+    health=application.bot_data.get('runtime_health') if application else None
+    if health:health.error(error,'handler')
+    else:log.warning('Request failed; context=handler; error_type=%s',type(error).__name__)
+    # The error handler must itself survive failed DB/localization/network requests.
+    message=getattr(update,'effective_message',None)
+    chat=getattr(update,'effective_chat',None)
+    if message is None or getattr(chat,'type',None)!='private':return
+    language='ru' if str(getattr(getattr(update,'effective_user',None),'language_code','')).startswith('ru') else 'en'
+    try:language=product.language(update)
+    except Exception:pass
+    try:
+        if isinstance(error,RetryAfter):
+            delay=error.retry_after.total_seconds() if isinstance(error.retry_after,timedelta) else error.retry_after
+            stop=application.bot_data.get('runtime_stop') if application else None
+            if await wait_stop(stop or asyncio.Event(),delay):return
+        await message.reply_text(locale_text(language,'reliability_action_failed'))
+    except Exception as exc:
+        if health:health.error(exc,'error_notice')
+        else:log.warning('Error notice failed; error_type=%s',type(exc).__name__)
+
 
 async def run_ai(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, vacancy: str='') -> int:
     tr = product.translator(update)
@@ -311,7 +336,7 @@ async def cv_received(update, context):
     await receive_cv(update, context)
     return ConversationHandler.END
 
-def build_application(config: Settings | None=None) -> Application:
+def build_application(config: Settings | None=None, health=None) -> Application:
     global settings, db, ai, product, vacancies, builder_ui, apply_ui, alerts_ui, tracker_ui, growth_ui
     settings = config or load_settings()
     db = Database(settings.database_path)
@@ -323,7 +348,10 @@ def build_application(config: Settings | None=None) -> Application:
     alerts_ui = AlertsUI(product)
     tracker_ui = TrackerUI(product)
     growth_ui = GrowthUI(product, settings.admin_telegram_id, builder_ui)
-    app = Application.builder().token(settings.telegram_bot_token).concurrent_updates(False).post_init(start_sender).post_stop(stop_sender).build()
+    app = (Application.builder().token(settings.telegram_bot_token).concurrent_updates(False)
+        .request(ResilientRequest(health=health,connection_pool_size=8,connect_timeout=10,read_timeout=20,write_timeout=20))
+        .get_updates_request(ResilientRequest(health=health,connect_timeout=10,read_timeout=20))
+        .post_init(start_sender).post_stop(stop_sender).build())
     app.bot_data['job_alerts'] = alerts_ui.store
     app.bot_data['growth'] = growth_ui.store
     conversation = ConversationHandler(
@@ -360,6 +388,7 @@ def build_application(config: Settings | None=None) -> Application:
     app.add_handler(conversation)
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE, record_activity), group=-1)
     app.add_handler(CallbackQueryHandler(record_activity), group=-1)
+    app.add_handler(TypeHandler(Update,record_runtime_update),group=-2)
     app.add_error_handler(error_handler)
     return app
 
@@ -368,13 +397,36 @@ async def record_activity(update, context):
         Growth(db).touch(update.effective_user.id)
 
 
+async def record_runtime_update(update,context):
+    health=context.application.bot_data.get('runtime_health')
+    if health:health.update_seen()
+
+
 def main() -> None:
+    parser=argparse.ArgumentParser(description='Dubai Job Assistant always-on bot')
+    parser.add_argument('--stop',action='store_true',help='Request graceful stop of the running bot.')
+    args=parser.parse_args()
+    runtime=BASE_DIR/'runtime'
+    if args.stop:
+        runtime.mkdir(exist_ok=True)
+        (runtime/'bot.stop').write_text('stop',encoding='utf-8')
+        print('Bot stop requested.');return
     try:
-        app = build_application()
-    except RuntimeError as exc:
-        print(str(exc))
-        raise SystemExit(1) from None
-    print(locale_text('en', 'operator_running'))
-    app.run_polling(drop_pending_updates=True)
+        with InstanceLock(runtime/'bot.lock'):
+            configure_logging(BASE_DIR/'logs'/'bot.log')
+            (runtime/'bot.stop').unlink(missing_ok=True)
+            health=BotHealth(runtime/'bot_health.json')
+            try:
+                app=build_application(health=health)
+                code=asyncio.run(serve(app,health,runtime/'bot.stop'))
+            except KeyboardInterrupt:
+                health.set(status='stopped');code=0
+            except Exception as exc:
+                health.error(exc,'startup');health.set(status='error');code=1
+            if code:raise SystemExit(code)
+    except AlreadyRunning:
+        print('Dubai Job Assistant is already running.')
+        raise SystemExit(3) from None
+
 if __name__ == '__main__':
     main()

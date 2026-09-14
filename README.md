@@ -815,8 +815,8 @@ This wrapper waits ten seconds after unexpected exits and stops after five failu
 within ten minutes. Normal shutdown (0), another instance (3) and Ctrl+C (130 or
 Windows control-C exit status) do not restart. Inspect the error and logs before
 restarting a crash loop. It is not an operating-system service and cannot run while
-the machine is off/asleep. The bot script does not add a second bot-instance lock;
-run only one bot.
+the machine is off/asleep. The bot now has its own independent instance lock; see the Windows bot
+reliability section below.
 
 ### Lifecycle and recovery
 
@@ -902,3 +902,107 @@ collector running for at least six minutes, confirm a later heartbeat and source
 checkpoints, try a second launch (exit 3), then test `--stop` and restart. Do not
 turn off the entire machine's network just to test one collector when other work
 or remote access depends on it.
+
+## Run 24/7 on Windows: bot reliability
+
+Start both processes in separate foreground watchdog windows with one command:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_all.ps1
+```
+
+The launcher checks each kernel lock first; a racing second launch is also refused
+by the process itself. It does not stop existing processes or change Windows power
+settings. The scripts resolve their own project directory and use `.venv` Python;
+no manual `cd`, credentials in scripts, server or paid service is needed. Keep the
+laptop awake and the consoles open. No local process runs while Windows is asleep
+or the computer is off. ExecutionPolicy applies only to the launched process.
+
+For the bot alone choose **one** of:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_bot.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_bot_forever.ps1
+```
+
+The watchdog is secondary protection: unexpected exit -> 10-second delay; five
+failures within ten minutes -> `Bot repeatedly crashed. Check logs/bot.log`.
+Normal exit, Ctrl+C, local duplicate-instance and Telegram conflict exits do not
+restart. A stop requested during the watchdog's delay is honored on its next loop.
+
+### What the lifecycle audit established
+
+The installed framework at validation is python-telegram-bot 22.8. The previous
+`run_polling()` call used its default `bootstrap_retries=0`, and printed "running"
+**before** initialization. A timeout during bootstrap therefore propagated out of
+main and returned to PowerShell. This path is reproduced by an automated test.
+Steady-state PTB polling already retries Telegram/network errors indefinitely;
+`Request failed` from an update error handler does not itself stop polling.
+The old error handler could also fail while accessing localization/DB or sending
+its error notice; PTB catches those failures, so they do not by themselves prove
+why a historic process exited. Old logs omit exception types and exit markers,
+and do not establish the exact historical exit cause. Two legacy bot launches
+were found during replacement, making polling conflicts an additional risk.
+
+The new implementation uses PTB's supported async initialize/start-polling/start/
+stop/shutdown APIs. PTB retains its own steady-state polling retry and RetryAfter
+behavior; there is no second polling retry loop layered around it. Only bootstrap
+operations retry transient failures with 2/5/10/30/60-second backoff and respect
+RetryAfter. Conflict/invalid token terminate rather than retrying forever. Low-level
+connection/timeout/OSError failures are normalized to NetworkError for PTB. Startup
+"running" is now logged after actual initialization and polling start. Pending
+Telegram updates are no longer deliberately dropped at startup.
+
+A global handler isolates user-action exceptions, uses localized generic RU/EN
+messages, survives failed localization/DB/error notices and observes RetryAfter
+before attempting a notice. It never replays a failed user action or retries an
+ambiguous outgoing send automatically. Bot-specific SQLite connections have short
+transactions, rollback/close and bounded retries of busy statements/commit (four
+attempts, 1s SQLite busy timeout each, plus 0.1/0.3/0.6s delays). A BUSY_SNAPSHOT
+is rolled back rather than blindly retrying the statement. Core DB schema and the
+collector's connections are unchanged.
+
+Job Alerts/follow-ups/interview reminders/feedback currently use the existing
+explicit async sender, not a separately configured JobQueue. Each job has its own
+exception boundary; a failed job does not prevent the others from attempting work
+through their existing shared rate gate. Existing outbox/idempotency logic remains
+unchanged. A configured PTB JobQueue is also stopped by Application.stop.
+
+### Bot health, logging and stop
+
+`runtime/bot_health.json` records starting/running/degraded/reconnecting/stopped/error,
+UTC startup/heartbeat/last-update times, dispatched update count, error count,
+network error count and last exception class. Dispatched updates include attempts
+that later fail; this is an operational counter, not a success/conversion metric.
+The same exception observed at request and polling layers is counted once.
+No user IDs/content/contacts are stored in this file. A successful Telegram request
+clears transient degraded state. Heartbeat is logged every five minutes, including
+idle periods; validate both heartbeat freshness and process existence after crashes.
+
+Console and UTF-8 `logs/bot.log` receive only safe runtime messages and exception
+class/context, without exception bodies or unsanitized tracebacks. Rotation is
+2 MiB per file with four backups. Untrusted third-party HTTP/Telegram logs are not
+copied into this log. Runtime/log/session/private files remain Git-ignored.
+
+`runtime/bot.lock` is an OS-owned lock, independent of the collector lock. A second
+bot prints `Dubai Job Assistant is already running.` and exits 3. Crash/stale-file
+recovery is automatic because the kernel releases ownership; the small file can
+remain. A Telegram conflict from an instance on another machine writes error state,
+logs the conflict separately, stops polling and exits 4 without endless retry.
+
+Ctrl+C, SIGTERM or the following command request a graceful stop:
+
+```powershell
+.\.venv\Scripts\python.exe bot.py --stop
+```
+
+Shutdown stops polling, the explicit sender and Application/JobQueue, drains async
+work with a 30-second limit per cleanup phase, closes resources and releases the
+lock. OS-level forced termination or blocking native code cannot guarantee final
+health writes; the watchdog does not replace normal lifecycle cleanup.
+
+Tests use fake HTTP transports with the real PTB polling machinery, plus local
+SQLite and PowerShell policy tests, without live Telegram credentials. Live
+acceptance also needs user-side `/start`, search, Profile, My CV and Job Alerts
+checks in Telegram; server startup and synthetic-update tests alone do not prove
+that every button rendered correctly in the user's Telegram client.

@@ -116,7 +116,7 @@ class BotTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_error_logs_omit_sensitive_exception(self):
         self.context.error = RuntimeError("private-cv-and-secret")
-        with self.assertLogs("bot", level="ERROR") as captured:
+        with self.assertLogs("bot", level="WARNING") as captured:
             await bot.error_handler(None, self.context)
         self.assertNotIn("private-cv-and-secret", "".join(captured.output))
 

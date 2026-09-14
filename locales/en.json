@@ -570,5 +570,6 @@
   "g_funnel_4": "Saved or matched",
   "g_funnel_5": "Application created",
   "g_feedback_open": "Open",
-  "g_feedback_resolved": "Resolved"
+  "g_feedback_resolved": "Resolved",
+  "reliability_action_failed": "⚠️ Couldn't complete this action.\nPlease try again in a few seconds."
 }
