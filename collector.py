@@ -4,9 +4,10 @@ import asyncio
 import getpass
 import logging
 import re
+import sqlite3
 from datetime import datetime, timezone
 
-from telethon import TelegramClient, errors, types
+from telethon import TelegramClient, errors, types, events, functions
 
 from collector_config import load_collector_settings
 from config import BASE_DIR
@@ -15,7 +16,16 @@ from vacancy_store import VacancyStore, normalize_source
 from services.vacancy_pipeline import VacancyPipeline, analyze_text, prune_media
 from services.collector_diagnostics import Diagnostics
 
+from services.collector_runtime import (AlreadyRunning, InstanceLock, Health, configure_logging,
+    supervise, run_controlled)
+
 log = logging.getLogger('collector')
+
+
+def public_source(entity, username):
+    names = [getattr(entity, 'username', None)] + [u.username for u in (getattr(entity, 'usernames', None) or []) if u.active]
+    return (isinstance(entity, types.Channel) and bool(entity.broadcast or entity.megagroup)
+            and username.casefold() in [n.casefold() for n in names if n])
 
 
 def bounded_backfill(value):
@@ -29,9 +39,13 @@ def bounded_backfill(value):
 
 
 class Collector:
-    def __init__(self, client, store, processor=None, sleep=asyncio.sleep, diagnostics=None):
+    def __init__(self, client, store, processor=None, sleep=asyncio.sleep, diagnostics=None, health=None):
         self.client, self.store, self.processor, self.sleep = client, store, processor, sleep
         self.diagnostics = diagnostics or Diagnostics()
+        self.health = health
+        self.active_sources = set()
+        self.entity_ids = set()
+        self.stop = None
 
     async def process_message(self, source, message, force=False):
         message_id = getattr(message, 'id', None)
@@ -55,12 +69,20 @@ class Collector:
         if self.processor:
             try:
                 values.update(await self.processor(self.client, source, message))
+                if self.health and values.get('ocr_status')=='failed':
+                    self.health.update(error_count=self.health.data['error_count']+1,last_error_type='OCRFailure')
             except errors.FloodWaitError:
                 raise
-            except Exception:
+            except Exception as exc:
+                if self.health: self.health.error(exc)
                 self.diagnostics.event(source['id'], message_id, 'pipeline', reason='pipeline_failed', vacancy_saved=False)
                 if force:
                     raise  # A failed retry must not replace a previously successful result.
+                try:
+                    values.update(analyze_text(raw))
+                except Exception:
+                    from services.vacancy_detector import detect_vacancy
+                    values.update(detect_vacancy(raw))
                 values['processing_error'] = 'pipeline_failed'
                 log.warning('Message processing failed; source_id=%s message_id=%s', source['id'], message_id)
         try:
@@ -84,6 +106,7 @@ class Collector:
             duplicate=bool(row['duplicate_of']), ui_eligible=eligible,
             detection_score=row['detection_score'], detection_status=row['detection_status'],
             reason='duplicate' if row['duplicate_of'] else 'not_detected' if row['detection_status'] not in {'vacancy', 'probably_vacancy'} else 'source_disabled' if not source['enabled'] else 'visible_without_user_filters')
+        if self.health: self.health.processed()
         log.info('Message processed; source_id=%s message_id=%s', source['id'], message_id)
         if row['duplicate_of']:
             log.info('Duplicate skipped from listings; vacancy_id=%s', vacancy_id)
@@ -94,10 +117,12 @@ class Collector:
     async def collect_source(self, source, backfill=None):
         log.info('Source started; source_id=%s', source['id'])
         entity = await self.client.get_entity(source['telegram_username'])
-        public_names = [getattr(entity, 'username', None)] + [u.username for u in (getattr(entity, 'usernames', None) or []) if u.active]
-        if not isinstance(entity, types.Channel) or not entity.broadcast or source['telegram_username'].lower() not in [n.lower() for n in public_names if n]:
-            log.warning('Source is not an allowed public broadcast channel; source_id=%s', source['id'])
+        if not public_source(entity, source['telegram_username']):
+            self.active_sources.discard(source['id'])
+            log.warning('Source unavailable; source_id=%s', source['id'])
             return
+        self.active_sources.add(source['id'])
+        self.entity_ids.add(entity.id)
         if backfill:
             messages = await self.client.get_messages(entity, limit=backfill, wait_time=1)
             valid = [m for m in messages if isinstance(getattr(m, 'id', None), int) and m.id > 0]
@@ -112,24 +137,48 @@ class Collector:
         else:
             messages = self.client.iter_messages(entity, min_id=source['last_message_id'], reverse=True, limit=100, wait_time=1)
         highest = source['last_message_id']
+        cursor_blocked = False
         async def handle(message):
-            nonlocal highest
+            nonlocal highest, cursor_blocked
             if not isinstance(getattr(message, 'id', None), int) or message.id <= 0:
                 log.warning('Malformed message skipped; source_id=%s', source['id'])
                 return
-            await self.process_message(source, message)
-            highest = max(highest, getattr(message, 'id', 0) or 0)
-            self.store.checkpoint(source['id'], highest)
+            for attempt in range(3):
+                try:
+                    await self.process_message(source, message)
+                    if not cursor_blocked:
+                        highest = max(highest, message.id)
+                        self.store.checkpoint(source['id'], highest)
+                    return
+                except errors.FloodWaitError:
+                    raise
+                except Exception as exc:
+                    if self.health: self.health.error(exc)
+                    if isinstance(exc, sqlite3.OperationalError) and ('locked' in str(exc).lower() or 'busy' in str(exc).lower()) and attempt < 2:
+                        log.warning('DB busy; source_id=%s message_id=%s; retry=%s',source['id'],message.id,attempt+1)
+                        await self.sleep((1,2)[attempt])
+                        continue
+                    # Continue this batch but never checkpoint past an uncommitted message.
+                    cursor_blocked = True
+                    log.warning('Message failed; source_id=%s message_id=%s; error_type=%s',source['id'],message.id,type(exc).__name__)
+                    return
         if isinstance(messages, list):
             for message in messages:
+                if self.stop and self.stop.is_set(): break
                 await handle(message)
         else:
             async for message in messages:
+                if self.stop and self.stop.is_set(): break
                 await handle(message)
         self.store.checkpoint(source['id'], highest)
+        log.info('Source checked; source_id=%s; last_message_id=%s',source['id'],highest)
 
     async def run_once(self, backfill=None):
-        for source in self.store.sources(enabled_only=True):
+        sources = self.store.sources(enabled_only=True)
+        self.active_sources.intersection_update(s['id'] for s in sources)
+        if self.health: self.health.update(enabled_sources=len(sources))
+        for source in sources:
+            if self.stop and self.stop.is_set(): break
             while True:
                 try:
                     # Reload the checkpoint after partial progress and FloodWait.
@@ -139,11 +188,19 @@ class Collector:
                     break
                 except errors.FloodWaitError as exc:
                     log.warning('Telegram requested a wait; seconds=%s', exc.seconds)
-                    await self.sleep(exc.seconds)
-                except Exception:
-                    # DB/network errors leave the cursor at the last committed message.
-                    log.warning('Source failed; retry on next poll; source_id=%s', source['id'])
+                    if self.stop:
+                        from services.collector_runtime import wait_stop
+                        if await wait_stop(self.stop,exc.seconds): return
+                    else:
+                        await self.sleep(exc.seconds)
+                except (ConnectionError, TimeoutError, OSError):
+                    raise
+                except Exception as exc:
+                    self.active_sources.discard(source['id'])
+                    if self.health: self.health.error(exc)
+                    log.warning('Source unavailable; source_id=%s; error_type=%s', source['id'],type(exc).__name__)
                     break
+            if self.health: self.health.update(active_sources=len(self.active_sources))
             await self.sleep(1)
 
 
@@ -161,7 +218,7 @@ async def authenticate(client, phone):
         raise ValueError('Use a user-account session for the collector.')
 
 
-async def run(args):
+async def run(args, health=None):
     diagnostics = Diagnostics(args.debug_pipeline)
     if args.prepare_ocr:
         from services.ocr import EasyOCREngine
@@ -170,7 +227,17 @@ async def run(args):
         return
     data_dir = BASE_DIR / 'data'
     data_dir.mkdir(exist_ok=True)
-    store = VacancyStore(Database(data_dir / 'bot.sqlite3'))
+    for attempt in range(3):
+        try:
+            store = VacancyStore(Database(data_dir / 'bot.sqlite3'))
+            log.info('Database self-check passed.')
+            break
+        except sqlite3.OperationalError as exc:
+            if health: health.error(exc)
+            if attempt==2 or not any(word in str(exc).lower() for word in ('locked','busy')):
+                raise
+            log.warning('Database startup busy; retry=%s',attempt+1)
+            await asyncio.sleep(attempt+1)
     store.seed_sources(BASE_DIR / 'sources.json')
     if args.reprocess:
         for row in store.retry_candidates(args.reprocess):
@@ -210,25 +277,49 @@ async def run(args):
     log.info('OCR configured: %s', 'enabled' if settings.ocr_enabled else 'disabled (image-only posts cannot be detected; set VACANCY_OCR_ENABLED=true)')
     settings.session_path.parent.mkdir(exist_ok=True)
     client = TelegramClient(str(settings.session_path), settings.api_id, settings.api_hash,
-                            receive_updates=False, flood_sleep_threshold=0)
-    try:
-        while True:
+                            receive_updates=True, flood_sleep_threshold=0, timeout=15,
+                            connection_retries=3, request_retries=3, retry_delay=2, auto_reconnect=True)
+    engine = None
+    collector = None
+    disconnect_task = None
+    wake = asyncio.Event()
+    async def connect():
+        nonlocal disconnect_task
+        if disconnect_task is not None:
+            disconnect_task.cancel()
+            await asyncio.gather(disconnect_task,return_exceptions=True)
+        if client.is_connected():
+            await client.disconnect()
+        await authenticate(client, settings.phone)
+        await client(functions.updates.GetStateRequest())
+        log.info('Telegram session self-check passed; updates enabled.')
+        async def watch_disconnect():
             try:
-                await authenticate(client, settings.phone)
-                break
-            except errors.FloodWaitError as exc:
-                log.warning('Telegram requested an authentication wait; seconds=%s', exc.seconds)
-                await asyncio.sleep(exc.seconds)
-        from services.ocr import EasyOCREngine
-        engine = None
+                await client.disconnected
+            except Exception as exc:
+                if health: health.error(exc)
+                log.warning('Telegram disconnected; error_type=%s',type(exc).__name__)
+            finally:
+                wake.set()
+        disconnect_task = asyncio.create_task(watch_disconnect())
+    async def execute(stop):
+        nonlocal engine, collector
+        # A bounded native worker also makes Ctrl+C during OCR drainable.
+        from services.collector_ocr import ManagedOCREngine
         if settings.ocr_enabled:
             try:
-                engine = await asyncio.to_thread(EasyOCREngine, BASE_DIR / 'ocr_models')
+                engine = ManagedOCREngine(BASE_DIR / 'ocr_models',wait_ready=False)
+                await asyncio.to_thread(engine.ready)
                 log.info('OCR engine ready; local EN/RU models loaded on CPU.')
             except Exception as exc:
-                reason = 'dependency_missing' if isinstance(exc, ImportError) else 'model_missing' if isinstance(exc, FileNotFoundError) else 'native_library_or_model_access' if isinstance(exc, OSError) else 'engine_initialization_failed'
-                log.warning('OCR unavailable; reason=%s. Check requirements-ocr.txt and --prepare-ocr.', reason)
-        collector = Collector(client, store, VacancyPipeline(settings, engine, diagnostics), diagnostics=diagnostics)
+                if engine is not None: engine.close()
+                engine = None
+                if health: health.error(exc)
+                log.warning('OCR unavailable; continuing in text-only mode; error_type=%s',type(exc).__name__)
+        collector = Collector(client, store, VacancyPipeline(settings, engine, diagnostics), diagnostics=diagnostics, health=health)
+        collector.stop = stop
+        if args.reprocess_backfill or args.reprocess_message or args.retry_ocr:
+            await connect()
         if args.reprocess_backfill:
             await reprocess_backfill(collector, *args.reprocess_backfill)
             return
@@ -241,14 +332,44 @@ async def run(args):
                 return
             await retry_ocr(collector, args.retry_ocr)
             return
-        while True:
-            prune_media(settings.media_dir, settings.media_retention_days)
+        async def on_message(event):
+            # Only a wake-up signal: serialized history catch-up owns checkpoints/OCR.
+            channel_id = getattr(getattr(event.message,'peer_id',None),'channel_id',None)
+            if not stop.is_set() and channel_id in collector.entity_ids:
+                wake.set()
+        client.add_event_handler(on_message, events.NewMessage())
+        async def cycle():
+            try:
+                prune_media(settings.media_dir, settings.media_retention_days)
+            except Exception as exc:
+                if health: health.error(exc)
+                log.warning('Media cleanup failed; error_type=%s',type(exc).__name__)
             await collector.run_once(args.backfill)
+            log.info('Collector listening for new messages; enabled_sources=%s; active_sources=%s',
+                health.data['enabled_sources'],health.data['active_sources'])
             if args.once or args.backfill:
-                break
-            await asyncio.sleep(settings.poll_seconds)
+                stop.set()
+        try:
+            await supervise(cycle, connect, client.is_connected, stop, health,
+                            poll_seconds=settings.poll_seconds,wake=wake)
+        finally:
+            client.remove_event_handler(on_message)
+    def close_ocr():
+        if engine is not None:
+            engine.close()
+    try:
+        await run_controlled(execute, health, BASE_DIR/'runtime'/'collector.stop',close_ocr)
     finally:
-        await client.disconnect()
+        close_ocr()
+        if disconnect_task is not None:
+            disconnect_task.cancel()
+            await asyncio.gather(disconnect_task,return_exceptions=True)
+        try:
+            await asyncio.wait_for(client.disconnect(),timeout=10)
+        except Exception as exc:
+            if health: health.error(exc)
+            log.warning('Disconnect cleanup failed; error_type=%s',type(exc).__name__)
+
 
 
 async def retry_ocr(collector, limit):
@@ -258,7 +379,7 @@ async def retry_ocr(collector, limit):
             try:
                 source = sources[row['source_id']]
                 entity = await collector.client.get_entity(source['telegram_username'])
-                if not isinstance(entity, types.Channel) or not entity.broadcast or not entity.username:
+                if not public_source(entity, source['telegram_username']):
                     break
                 message = await collector.client.get_messages(entity, ids=row['source_message_id'])
                 if message:
@@ -284,8 +405,8 @@ async def reprocess_backfill(collector, username, limit):
         try:
             entity = await collector.client.get_entity(source['telegram_username'])
             names = [getattr(entity, 'username', None)] + [u.username for u in (getattr(entity, 'usernames', None) or []) if u.active]
-            if not isinstance(entity, types.Channel) or not entity.broadcast or source['telegram_username'].casefold() not in [n.casefold() for n in names if n]:
-                log.warning('Backfill retry refused: source is not a public broadcast channel; source_id=%s', source['id'])
+            if not public_source(entity, source['telegram_username']):
+                log.warning('Backfill retry refused: source is not an accessible public channel/group; source_id=%s', source['id'])
                 return
             messages = await collector.client.get_messages(entity, limit=limit, wait_time=1)
             break
@@ -335,7 +456,7 @@ async def reprocess_message(collector, username, message_id):
         try:
             entity = await collector.client.get_entity(source['telegram_username'])
             names = [getattr(entity, 'username', None)] + [u.username for u in (getattr(entity, 'usernames', None) or []) if u.active]
-            if not isinstance(entity, types.Channel) or not entity.broadcast or source['telegram_username'].casefold() not in [n.casefold() for n in names if n]:
+            if not public_source(entity, source['telegram_username']):
                 collector.diagnostics.event(source['id'], message_id, 'skip', reason='not_public_channel', vacancy_saved=False)
                 return
             message = await collector.client.get_messages(entity, ids=message_id)
@@ -367,6 +488,7 @@ def main():
     group.add_argument('--disable-source', metavar='ID_OR_USERNAME_OR_LINK')
     group.add_argument('--enable-source', metavar='ID_OR_USERNAME_OR_LINK')
     group.add_argument('--remove-source', metavar='ID_OR_USERNAME_OR_LINK', help='Stop collection without deleting vacancies or saved links; explicit add restores it.')
+    group.add_argument('--stop', action='store_true', help='Request graceful stop of the running collector.')
     args = parser.parse_args()
     if args.source_title is not None and not args.add_source:
         parser.error('--source-title requires --add-source.')
@@ -389,16 +511,44 @@ def main():
         username, number = args.reprocess_message
         if not re.fullmatch(r'@?[a-zA-Z][a-zA-Z0-9_]{3,31}', username) or not number.isascii() or not number.isdigit() or not 0 < int(number) <= 2147483647:
             parser.error('--reprocess-message requires a public username and positive message ID.')
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
-    logging.getLogger('telethon').setLevel(logging.CRITICAL)
+    runtime = BASE_DIR/'runtime'
+    if args.stop:
+        runtime.mkdir(exist_ok=True)
+        (runtime/'collector.stop').write_text('stop',encoding='utf-8')
+        print('Collector stop requested.')
+        return
+    # Read-only/config management commands do not open the Telethon session.
+    local = any((args.list_sources,args.source_quality,args.add_source,args.disable_source,
+                 args.enable_source,args.remove_source,args.prepare_ocr,args.reprocess))
+    if local:
+        logging.basicConfig(level=logging.INFO,format='%(asctime)s %(levelname)s %(message)s')
+        try:
+            asyncio.run(run(args))
+        except KeyboardInterrupt:
+            return
+        except Exception as exc:
+            log.error('Collector command failed; error_type=%s',type(exc).__name__)
+            raise SystemExit(1) from None
+        return
+    health = None
     try:
-        asyncio.run(run(args))
-    except KeyboardInterrupt:
-        log.info('Collector stopped.')
-    except Exception:
-        # Never render exception messages: RPC errors can contain auth/user data.
-        log.error('Collector could not start. Check .env, local permissions and Telegram authorization.')
-        raise SystemExit(1) from None
+        with InstanceLock(runtime/'collector.lock'):
+            configure_logging(BASE_DIR/'logs')
+            (runtime/'collector.stop').unlink(missing_ok=True)
+            health = Health(runtime/'collector_health.json')
+            try:
+                asyncio.run(run(args,health))
+            except KeyboardInterrupt:
+                pass
+            except Exception as exc:
+                health.error(exc); health.update(status='error')
+                log.error('Collector failed; error_type=%s; check configuration/session/permissions.',type(exc).__name__)
+                raise SystemExit(1) from None
+            health.update(status='stopped')
+            log.info('Collector stopped.')
+    except AlreadyRunning:
+        print('Collector is already running.')
+        raise SystemExit(3) from None
 
 
 if __name__ == '__main__':

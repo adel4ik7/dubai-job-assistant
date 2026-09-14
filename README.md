@@ -146,8 +146,8 @@ list, retaining posts, saved links and its cursor. Startup seeding never restore
 or overrides user titles/enabled preferences. Explicit `--add-source` restores a
 removed source with its original ID and cursor. Use disable/enable for a temporary
 pause. Old databases gain an additive column; existing user records are preserved.
-Only explicitly configured public broadcast channels are read; private chats/groups
-are refused. It never joins channels, sends messages or applies for jobs.
+Only explicitly configured public broadcast channels and accessible public
+megagroups/supergroups are read; private chats/groups are refused. It never joins channels, sends messages or applies for jobs.
 On an uninitialized source the normal run establishes a current-post baseline,
 without downloading history. Backfill accepts 1–500 latest posts per enabled source.
 Later runs process up to 100 new posts per source per poll, sequentially; the default
@@ -257,7 +257,7 @@ python collector.py --reprocess-backfill jobs_in_dubai 50
 python collector.py --reprocess-backfill jobs_in_dubai 50 --debug-pipeline
 ```
 
-N must be 1–500. Only an enabled, configured public broadcast channel is accepted.
+N must be 1–500. Only an enabled, configured public channel or megagroup is accepted.
 The command reads one bounded snapshot of the latest N messages, processes them
 sequentially and exits. Existing source/message rows are updated in place; new posts
 are inserted once. Existing content-hash deduplication groups reposts while retaining
@@ -788,3 +788,117 @@ posts or copies already delivered in Telegram.
 Recommended acceptance check: invite 3–5 consenting testers, exercise optional
 RU/EN setup -> CV -> matching -> Apply Pack, then review feedback/source quality
 and seven-day activity. No payments or automatic employer messages are included.
+
+## Collector reliability and local always-on operation
+
+Use a dedicated PowerShell window for each local process:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_collector.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_bot.ps1
+```
+
+Each script resolves the project directory and uses `.venv\Scripts\python.exe`.
+The collector stays in the foreground until Ctrl+C; keep its window and the laptop
+awake. Sleep, shutdown, Windows termination or closing the host terminal prevents
+local monitoring. These scripts do not change power settings, install a server or
+register an autostart task. The process-local execution-policy option does not
+change the machine's policy.
+
+Optional bounded crash recovery, **instead of** start_collector.ps1:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_collector_forever.ps1
+```
+
+This wrapper waits ten seconds after unexpected exits and stops after five failures
+within ten minutes. Normal shutdown (0), another instance (3) and Ctrl+C (130 or
+Windows control-C exit status) do not restart. Inspect the error and logs before
+restarting a crash loop. It is not an operating-system service and cannot run while
+the machine is off/asleep. The bot script does not add a second bot-instance lock;
+run only one bot.
+
+### Lifecycle and recovery
+
+- Existing `.env` and Telethon user session are reused. Configuration, SQLite,
+  authorization, OCR and enabled sources are checked; no credentials are printed.
+- Telethon NewMessage events wake a **serialized history catch-up**, rather than
+  doing concurrent OCR in handlers. The usual five-minute poll remains as fallback
+  for missed events and public sources for which the account receives no updates.
+  No automatic joining, messaging, replies or application sending is performed.
+  The default loop is indefinite; explicit maintenance flags such as `--once`,
+  `--backfill` and `--reprocess-backfill` intentionally finish.
+- A never-checked source establishes its latest-message baseline without importing
+  its old history. Use an explicit bounded backfill to import earlier posts.
+- Public broadcast channels **and public megagroups/supergroups** are accepted
+  only when the configured active username matches the accessible entity. Private,
+  renamed, unavailable and wrong-type entities are skipped independently.
+- Disconnect checks during idle periods occur at least every 15 seconds. Transient
+  connection/timeout/DNS/socket failures use reconnect backoff of 2, 5, 10, 30 and
+  at most 60 seconds; a successful collection cycle resets the delay. Telegram's
+  own finite reconnect attempts run underneath this supervisor. FloodWait always
+  waits at least the requested time (unless explicitly stopping the service).
+- Processing is isolated per message. A failure cannot prevent later messages in
+  the current bounded batch from being attempted. The source checkpoint never
+  advances past an uncommitted message, so it is retried on the next poll; already
+  stored later messages remain deduplicated. Persistent storage failures require
+  operator investigation, and are not silently skipped. SQLite lock/busy failures
+  receive at most three attempts with 1s/2s pauses, in addition to SQLite's 5s busy
+  timeout; connections rollback and close through the existing DB context manager.
+- OCR runs in a bounded local worker process using the existing EasyOCR/Pillow
+  engine and Unicode-path fix. Initialization/recognition is limited to 120 seconds;
+  a hung worker is terminated. Captions still go through detection when OCR fails.
+  If models/native dependencies are unavailable, text-only collection continues.
+  An unavailable/terminated OCR worker requires a collector restart after repair;
+  use the existing `--retry-ocr` maintenance command for affected image posts.
+  Failed parser processing retains available raw text and detector output.
+
+The event-loop approach follows Telethon's supported async lifecycle; periodic
+history catch-up remains authoritative for checkpoints. See the
+[official Telethon lifecycle reference](https://docs.telethon.dev/en/stable/modules/client.html).
+
+### Lock, health, logs and stopping
+
+`runtime/collector.lock` uses a Windows kernel file lock (flock on POSIX). Another
+session-consuming collector launch exits with **Collector is already running.**
+without changing the first process or opening its Telethon session. Kernel locks
+are released on normal exit and crashes. The small lock file is intentionally kept
+in place: stale file contents do not block startup, and avoiding unlink prevents
+races between concurrent launches. Read-only/source-management commands may still
+run while collection is active because they do not open that session.
+
+`runtime/collector_health.json` is replaced atomically and contains only status,
+UTC startup/heartbeat/last-processed-message times, enabled/active source counts,
+successful reconnect count, processed/error counts and the last exception class.
+Counts are for the current process; an initial connection is not a reconnect.
+`active_sources` means sources successfully validated during polling, not group
+membership. A quiet channel with no new posts is healthy. Heartbeat appears on
+startup and every five minutes, including during idle waits/reconnect backoff.
+When inspecting a health file, verify its heartbeat freshness and process existence;
+an abrupt kill cannot write a final stopped state.
+
+Safe collector logs go both to the console and UTF-8 `logs/collector.log`, limited
+to five files of 2 MiB each. No exception bodies, credentials or raw post/CV content
+are written by the lifecycle logger. Existing optional pipeline diagnostics remain
+explicitly opt-in and use masked short previews. Runtime, logs and session files
+remain ignored by Git.
+
+To stop gracefully from another terminal:
+
+```powershell
+.\.venv\Scripts\python.exe collector.py --stop
+```
+
+Ctrl+C uses the same drain: stop accepting new work, allow up to 30 seconds for
+current processing, terminate stuck OCR if needed, disconnect (10-second cleanup
+limit), write stopped state and release the kernel lock. A pending stop request
+is cleared on the next fresh launch. Fatal missing configuration/session/permission
+problems can still prevent startup; consult health/error types rather than running
+an unbounded crash loop.
+
+Unit tests use fake Telegram clients and no real login. Enable local OCR model
+smoke tests with `RUN_OCR_INTEGRATION=1`. For a live acceptance check, leave one
+collector running for at least six minutes, confirm a later heartbeat and source
+checkpoints, try a second launch (exit 3), then test `--stop` and restart. Do not
+turn off the entire machine's network just to test one collector when other work
+or remote access depends on it.

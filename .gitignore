@@ -11,3 +11,6 @@ sessions/
 *.session-*
 collector_media/
 ocr_models/
+
+runtime/
+logs/

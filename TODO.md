@@ -1,5 +1,43 @@
 # Dubai Job Assistant — TODO
 
+## Collector reliability / always-on — 2026-09-14
+- Only collector lifecycle, isolated OCR worker, Windows launch/watchdog scripts,
+  tests and operational documentation changed. Other product flows stay intact.
+- Added NewMessage wake-ups with authoritative serialized history catch-up,
+  indefinite supervisor, reconnect 2/5/10/30/60s backoff, FloodWait compliance,
+  per-message isolation, bounded DB busy retries and cursor preservation.
+- Public channels and accessible public megagroups now share validation. The
+  former source_id=4 rejection was a broadcast-only guard, now removed safely.
+- Added kernel-owned single-instance lock, crash/stale-file recovery, atomic
+  runtime health, five-minute independent heartbeat and bounded UTF-8 log rotation.
+- Ctrl+C / --stop drain work, terminate stuck OCR, disconnect and release lock.
+  OCR continues to use the existing Unicode/Pillow implementation in a bounded
+  worker process. Missing/broken OCR falls back to text-only; repair/restart and
+  --retry-ocr recover images. Launch scripts use .venv; watchdog stops crash loops.
+- Historical diagnosis: September 13 contains 9 collected messages, 8 vacancies;
+  collector was polling, not stuck since September 12. Two legacy collector
+  launches were found during replacement. Windows also records sleep events.
+  Exact cause of the earlier exit is unproven because old logs lack exit/health
+  markers. Sleep pauses all local monitoring; no server or power setting changed.
+- Validation: all 286 tests passed including real local OCR and managed-worker
+  Unicode fixture; compileall and pip check passed. Duplicate live launch exited
+  with code 3; --stop wrote stopped state and released the lock; restart succeeded.
+- Final live test exceeded 12 hours (2026-09-14): exactly one collector, eight
+  enabled/active sources, 104 processed posts, 28 successful OCR images, zero
+  health errors. Stored detection outcomes: 23 vacancy, 14 probably_vacancy,
+  67 not_vacancy. Five-minute heartbeats continued; recent posts were saved.
+  Network/DNS/reconnect/backoff scenarios were tested with simulated clients;
+  the laptop network was not disabled during live work. Reconnect count remained
+  zero in the observed live interval, so no real outage recovery is claimed.
+- Commit title: Harden collector lifecycle, reconnects and local health monitoring.
+  No other product module changed. Runtime/logs/session/media stay out of Git.
+- Exact next step after this milestone: run scripts/start_collector.ps1 (or the
+  bounded run_collector_forever.ps1 wrapper), keep the laptop awake, and inspect
+  runtime/collector_health.json plus logs/collector.log after a real connectivity
+  interruption. No further product module is authorized. Regression command:
+  `.venv\Scripts\python.exe -m unittest discover -s tests -p test_collector_reliability.py -q`.
+
+
 ## First users / analytics / onboarding — 2026-09-13
 - Added optional persisted new-user-only RU/EN onboarding, including existing
   alert preferences and upload/create CV handoff. Existing users are not forced
