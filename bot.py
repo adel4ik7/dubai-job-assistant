@@ -53,7 +53,7 @@ def user_id(update: Update) -> int:
 
 async def ensure_user(update: Update) -> None:
     u = update.effective_user
-    db.upsert_user(u.id, u.username, u.first_name)
+    db.upsert_user(u.id, u.username, u.first_name, getattr(u,'last_name',None))
     Growth(db).touch(u.id)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -405,7 +405,12 @@ async def record_runtime_update(update,context):
 def main() -> None:
     parser=argparse.ArgumentParser(description='Dubai Job Assistant always-on bot')
     parser.add_argument('--stop',action='store_true',help='Request graceful stop of the running bot.')
+    parser.add_argument('--list-users',action='store_true',help='Print local user metadata and counts; no Telegram connection.')
     args=parser.parse_args()
+    if args.list_users:
+        from services.admin_users import print_users
+        print_users(Database(BASE_DIR/'data'/'bot.sqlite3'))
+        return
     runtime=BASE_DIR/'runtime'
     if args.stop:
         runtime.mkdir(exist_ok=True)

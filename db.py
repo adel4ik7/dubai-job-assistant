@@ -118,6 +118,8 @@ class Database:
             user_columns = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
             if "language" not in user_columns:
                 conn.execute("ALTER TABLE users ADD COLUMN language TEXT DEFAULT NULL")
+            if "last_name" not in user_columns:
+                conn.execute("ALTER TABLE users ADD COLUMN last_name TEXT DEFAULT NULL")
             for code, legacy in zip(STATUSES, LEGACY_STATUSES):
                 conn.execute("UPDATE applications SET status=? WHERE status=?", (code, legacy))
 
@@ -139,17 +141,18 @@ class Database:
             from services.growth import initialize
             initialize(conn)
 
-    def upsert_user(self, telegram_id: int, username: str | None, first_name: str | None) -> None:
+    def upsert_user(self, telegram_id: int, username: str | None, first_name: str | None, last_name: str | None = None) -> None:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO users(telegram_id, username, first_name)
-                VALUES (?, ?, ?)
+                INSERT INTO users(telegram_id, username, first_name, last_name)
+                VALUES (?, ?, ?, ?)
                 ON CONFLICT(telegram_id) DO UPDATE SET
                     username=excluded.username,
-                    first_name=excluded.first_name
+                    first_name=excluded.first_name,
+                    last_name=excluded.last_name
                 """,
-                (telegram_id, username, first_name),
+                (telegram_id, username, first_name, last_name),
             )
 
     def add_resume(self, telegram_id: int, filename: str, file_path: str, extracted_text: str) -> int:

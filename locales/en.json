@@ -571,5 +571,9 @@
   "g_funnel_5": "Application created",
   "g_feedback_open": "Open",
   "g_feedback_resolved": "Resolved",
-  "reliability_action_failed": "⚠️ Couldn't complete this action.\nPlease try again in a few seconds."
+  "reliability_action_failed": "⚠️ Couldn't complete this action.\nPlease try again in a few seconds.",
+  "au_title": "👥 Users",
+  "au_summary": "Total: {total} · Active today: {active_today} · Active 7 days: {active_7d}\nNew today: {new_today} · New 7 days: {new_7d}",
+  "au_dates": "Dates: UTC. New = registered; 7 days = rolling window. CVs include drafts, without counting their exported copy twice. — = unknown.",
+  "au_row": "ID: {telegram_id} · Username: {username}\nFirst name: {first_name} · Last name: {last_name}\nLanguage: {lang}\nFirst /start: {first_start}\nRegistered: {registered_at}\nLast activity: {last_activity}\nEvents: {events} · Searches: {searches} · CVs: {cvs} · Applications: {applications}\nJob Alerts: {alerts}"
 }

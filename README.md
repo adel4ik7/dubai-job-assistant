@@ -1,5 +1,23 @@
 # Dubai Job Assistant — v0.4
 
+## Admin user directory
+
+Settings → Admin stats → **👥 Users / Пользователи** is restricted to
+ADMIN_TELEGRAM_ID and paginates five users at a time, latest activity first.
+It shows Telegram identity, language, first recorded /start, registration and last
+activity, event/search counts, CV count, application count and Job Alerts state.
+CVs include drafts, counting a draft and its exported resume only once.
+Only metadata/counts are selected: no CV text, messages, contacts or profile fields.
+Dates and today boundaries use UTC; seven-day counters use a rolling window.
+New users means registration; legacy first /start and activity can be unknown.
+Telegram last names are captured on subsequent interactions, never guessed.
+
+Trusted local operators can run `.venv\Scripts\python.exe bot.py --list-users`
+without connecting to Telegram or acquiring the running bot's instance lock.
+The console displays all users in a compact table, not the bot log. Keep this
+identity-bearing output private. This reuses users/product_events/product_activity;
+the only schema addition is nullable users.last_name. Restart the bot to load the UI.
+
 ## Share Vacancy / Поделиться вакансией
 
 Use **📤 Share / Поделиться** on a vacancy card (including Matching jobs now).

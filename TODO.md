@@ -1,5 +1,17 @@
 # Dubai Job Assistant — TODO
 
+## Admin users — completed 2026-09-15
+- Added RU/EN Admin stats → Users directory, five users per page, activity DESC.
+- Shared allowlisted queries for UI and `python bot.py --list-users`; no Telegram
+  connection required for CLI. Counts reuse users/events/activity/resumes/drafts/
+  applications/alert preferences. CV draft exports are not counted twice.
+- Nullable users.last_name migration; first recorded /start stays unknown for
+  legacy users without events. Registration shown separately. UTC day boundaries.
+- No private content selected or logged; Telegram UI checks existing admin guard.
+- Validation: full suite 310 tests, OK (2 skipped); compileall succeeded.
+- Next step: restart bot and open Settings → Admin stats → Users from admin account.
+  No collector restart or other product changes required. CLI: `.venv\Scripts\python.exe bot.py --list-users`.
+
 ## Bot reliability / always-on — 2026-09-15
 - Scope: bot lifecycle and operations only. Collector/OCR and product business
   rules unchanged. Reused the existing kernel-lock utility without modifying it.

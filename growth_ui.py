@@ -101,7 +101,7 @@ class GrowthUI:
         for i,(count,rate) in enumerate(zip(s['funnel'],s['conversion'])):
             lines.append(tr('g_funnel_'+str(i))+f': {count} ({rate}%)')
         rows=[[(tr('g_feedback'),'g:feedbacks:0'),(tr('g_reports'),'g:reports:0')],
-              [(tr('g_sources'),'g:sources:0')],[(tr('g_settings'),'g:settings')]]
+              [(tr('g_sources'),'g:sources:0'),(tr('au_title'),'g:users:0')],[(tr('g_settings'),'g:settings')]]
         await self.product.reply(update,'\n'.join(lines),keyboard(rows)); return END
 
     async def buttons(self, update, context):
@@ -163,6 +163,15 @@ class GrowthUI:
                 self.store.report(user,int(parts[2]),parts[3])
                 await self.product.reply(update,tr('g_report_saved')); return END
             self.store.admin(user)
+            if action=='users':
+                from services.admin_users import directory, render
+                offset=max(0,int(parts[2]))
+                counts, rows=directory(self.db,offset)
+                nav=[]
+                if offset: nav.append((tr('previous'),f'g:users:{max(0,offset-5)}'))
+                if offset+len(rows)<counts['total']: nav.append((tr('v_next'),f'g:users:{offset+5}'))
+                await self.product.reply(update,render(counts,rows,tr),keyboard(([nav] if nav else [])+[[(tr('back'),'g:admin')]]))
+                return END
             if action=='admin': return await self.admin_stats(update,context)
             if action=='feedbacks':
                 offset=max(0,int(parts[2])); rows=self.store.feedback_rows(user,offset)

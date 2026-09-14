@@ -571,5 +571,9 @@
   "g_funnel_5": "Создали отклик",
   "g_feedback_open": "Открыто",
   "g_feedback_resolved": "Решено",
-  "reliability_action_failed": "⚠️ Не удалось выполнить действие.\nПопробуйте ещё раз через несколько секунд."
+  "reliability_action_failed": "⚠️ Не удалось выполнить действие.\nПопробуйте ещё раз через несколько секунд.",
+  "au_title": "👥 Пользователи",
+  "au_summary": "Всего: {total} · Активны сегодня: {active_today} · За 7 дней: {active_7d}\nНовые сегодня: {new_today} · За 7 дней: {new_7d}",
+  "au_dates": "Даты: UTC. Новые = зарегистрированные; 7 дней = скользящий период. CV включают черновики без повторного подсчёта их экспорта. — = неизвестно.",
+  "au_row": "ID: {telegram_id} · Username: {username}\nИмя: {first_name} · Фамилия: {last_name}\nЯзык: {lang}\nПервый /start: {first_start}\nРегистрация: {registered_at}\nПоследняя активность: {last_activity}\nСобытия: {events} · Поиски: {searches} · CV: {cvs} · Отклики: {applications}\nJob Alerts: {alerts}"
 }
