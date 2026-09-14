@@ -56,6 +56,18 @@ class DirectoryTests(unittest.TestCase):
         build.assert_not_called();self.assertIn('last_activity',output.getvalue())
         self.assertNotIn('\x1b',output.getvalue())
 
+    def test_username_mentions_and_missing_fields(self):
+        self.db.upsert_user(1,'example_user','First',None)
+        self.db.upsert_user(2,None,'Second',None)
+        counts,rows=directory(self.db)
+        for lang in ('ru','en'):
+            output=render(counts,rows,lambda k,**kw:text(lang,k,**kw))
+            self.assertIn('@example_user',output)
+            self.assertIn('Username: \u2014',output)
+            self.assertNotIn('@\u2014',output)
+            self.assertIn(('Фамилия: ' if lang=='ru' else 'Last name: ')+'\u2014',output)
+            self.assertNotIn('\u0432\u0402\u201d',output)
+
     def test_legacy_migration(self):
         path=self.root/'old.db'
         with sqlite3.connect(path) as c:

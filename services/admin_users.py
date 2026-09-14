@@ -40,13 +40,14 @@ def directory(db, offset=0, limit=5, now=None):
 
 def clean(value):
     # Telegram identity fields are untrusted: remove terminal controls/newlines.
-    return ''.join(c for c in str(value) if not unicodedata.category(c).startswith('C')) if value is not None else 'вЂ”'
+    return ''.join(c for c in str(value) if not unicodedata.category(c).startswith('C')) if value is not None else '\u2014'
 
 
 def render(counts, rows, tr):
     lines = [tr('au_title'),tr('au_summary',**counts),tr('au_dates')]
     for row in rows:
         safe = {k:clean(v) for k,v in row.items()}
+        safe['username'] = '@' + clean(row['username']).lstrip('@') if row['username'] else clean(None)
         safe['lang'] = safe.pop('language')
         safe['alerts'] = tr('g_yes' if row['alerts'] else 'g_no')
         lines.append(tr('au_row',**safe))

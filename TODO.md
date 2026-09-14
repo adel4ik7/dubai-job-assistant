@@ -1,5 +1,13 @@
 # Dubai Job Assistant — TODO
 
+## Admin directory display fix — 2026-09-15
+- Telegram usernames now render as clickable @mentions; numeric IDs remain.
+- Fixed a UTF-8/Windows-codepage corrupted missing-value dash in admin_users.clean.
+  Use a Unicode escape and regression assertions for RU/EN missing names/dates.
+- No username is fabricated for accounts without one. Existing messages must be
+  refreshed by reopening Admin stats → Users after bot restart.
+- Validation: 311 tests, OK (2 skipped); full compileall succeeded.
+
 ## Admin users — completed 2026-09-15
 - Added RU/EN Admin stats → Users directory, five users per page, activity DESC.
 - Shared allowlisted queries for UI and `python bot.py --list-users`; no Telegram
