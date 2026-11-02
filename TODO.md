@@ -862,3 +862,10 @@ Before doing new work:
   and update `extract_requirements`, `deduplicate_requirements` or `evidence_status`.
   Keep external AI disabled. No partially implemented work remains.
 - Commit title: `Deduplicate vacancy requirements and cap soft skill impact`.
+
+
+## Documentation — 2026-11-02
+
+- [x] Rewrite the README as a short introduction for visitors, with the project background, features and local setup.
+- [x] Preserve the previous detailed README in TECHNICAL_NOTES.md and link both directions.
+- [x] Read back the published README and check it matches the intended text. Documentation-only change; application code and runtime were not changed. Compile and application tests were not rerun for this prose edit.
